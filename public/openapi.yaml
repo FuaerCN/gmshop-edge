@@ -1,0 +1,418 @@
+openapi: 3.1.0
+info:
+  title: GMShop Edge HTTP API
+  version: 1.4.0
+  description: >-
+    Browser, provider callback, and private-object boundaries exposed by one
+    GMShop Edge deployment. TanStack Server Functions used by the UI are not a
+    public merchant protocol.
+x-gmshop-server-functions:
+  description: >-
+    Same-origin TanStack Server Functions used by the storefront. They are
+    CSRF/origin checked application endpoints rather than merchant APIs.
+  operations:
+    - cart.preview
+    - cart.sync
+    - cart.setItem
+    - cart.removeItem
+    - checkout.createOrder
+    - checkout.quotePaymentCurrency
+    - commerce.trackEvent
+    - entitlement.renew
+    - catalog.createProductDraft
+    - catalog.getProductEditor
+    - catalog.saveProductContent
+    - catalog.saveProductSellableItems
+    - catalog.publishProduct
+servers:
+  - url: /
+paths:
+  /api/auth/{path}:
+    parameters:
+      - $ref: '#/components/parameters/AuthPath'
+    get:
+      operationId: betterAuthGet
+      responses:
+        '200': { description: Better Auth response }
+    post:
+      operationId: betterAuthPost
+      responses:
+        '200': { description: Better Auth response }
+        '400': { $ref: '#/components/responses/Problem' }
+  /api/shop/products/{productId}/cover:
+    get:
+      operationId: getProductCover
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '304': { description: Not modified }
+        '404': { description: Active product image not found }
+  /api/shop/products/{productId}/media/{mediaId}:
+    get:
+      operationId: getProductMedia
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - name: mediaId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '304': { description: Not modified }
+        '404': { description: Active product media not found }
+  /api/shop/payments/{channelId}/webhook:
+    parameters:
+      - name: channelId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: paymentWebhookGet
+      description: Verified GMpay/EPay-compatible callback query. Provider signatures remain mandatory.
+      responses:
+        '200': { description: Verified and idempotently processed }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: paymentWebhookPost
+      description: Verified provider callback body. The quoted attempt amount and fiat currency must match.
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { type: object, additionalProperties: true } }
+      responses:
+        '200': { description: Verified and idempotently processed }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /api/shop/automation/callback:
+    post:
+      operationId: automationCallback
+      parameters:
+        - $ref: '#/components/parameters/GMShopSignature'
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/AutomationCallback' } }
+      responses:
+        '200': { description: Verified and idempotently processed }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/shop/automation/{jobId}/artifacts/{fileName}:
+    post:
+      operationId: uploadAutomationArtifact
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: fileName
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[^/\\]{1,255}$' }
+        - name: X-GMShop-Artifact-Id
+          in: header
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/GMShopSignature'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream: { schema: { type: string, format: binary } }
+      responses:
+        '200': { description: Identical artifact upload already stored }
+        '201': { description: Artifact stored }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+  /api/shop/orders/{orderNumber}/deliveries/{deliveryId}/reveal:
+    post:
+      operationId: revealDelivery
+      parameters:
+        - $ref: '#/components/parameters/OrderNumber'
+        - name: deliveryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderAccess' }
+      responses:
+        '200':
+          description: Authorized, no-store delivery content
+          content:
+            application/json: { schema: { type: object, required: [content], properties: { content: { type: string } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /api/shop/orders/{orderNumber}/downloads/{assetId}:
+    post:
+      operationId: downloadPurchasedAsset
+      parameters:
+        - $ref: '#/components/parameters/OrderNumber'
+        - name: assetId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderAccess' }
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /api/shop/orders/{orderNumber}/automation/{jobId}/artifacts/{artifactId}:
+    post:
+      operationId: downloadAutomationArtifact
+      parameters:
+        - $ref: '#/components/parameters/OrderNumber'
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: artifactId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderAccess' }
+      responses:
+        '200': { $ref: '#/components/responses/Binary' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /api/shop/orders/{orderNumber}/automation:
+    post:
+      operationId: createCustomerAutomation
+      parameters:
+        - $ref: '#/components/parameters/OrderNumber'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entitlementId, methodId, idempotencyKey]
+              properties:
+                entitlementId: { type: string, format: uuid }
+                methodId: { type: string, format: uuid }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
+                notificationChannel:
+                  type: string
+                  enum: [none, email]
+                  default: none
+                lookupToken: { type: string, pattern: '^[0-9a-fA-F]{48}$' }
+                authorizationValues: { type: object, additionalProperties: true }
+                automationValues: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Existing idempotent automation job }
+        '201': { description: Automation job accepted }
+        '401': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/shop/orders/{orderNumber}/automation/{jobId}/cancel:
+    post:
+      operationId: cancelCustomerAutomation
+      parameters:
+        - $ref: '#/components/parameters/OrderNumber'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderAccess' }
+      responses:
+        '200': { description: Automation job cancelled or already in the requested state }
+        '401': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/shop/orders/{orderNumber}/automation/{jobId}/retry:
+    post:
+      operationId: retryCustomerAutomation
+      parameters:
+        - $ref: '#/components/parameters/OrderNumber'
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderAccess' }
+      responses:
+        '200': { description: Failed automation job queued for an idempotent retry }
+        '401': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+components:
+  parameters:
+    AuthPath:
+      name: path
+      in: path
+      required: true
+      schema: { type: string }
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderNumber:
+      name: orderNumber
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{8,80}$' }
+    GMShopSignature:
+      name: X-GMShop-Signature
+      in: header
+      required: true
+      description: Timestamped HMAC header in `t={unix-ms},v1={hex}` format.
+      schema: { type: string }
+  schemas:
+    DeliveryComponentPolicy:
+      type: object
+      required: [id, type, renewalMode, emailMode, showOnOrderPage, allowResend, version, enabled]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [stock, download, automation] }
+        durationMs: { type: [integer, 'null'], minimum: 1 }
+        usageLimit: { type: [integer, 'null'], minimum: 1 }
+        accessLimit: { type: [integer, 'null'], minimum: 1 }
+        renewalMode: { type: string, enum: [stack, disabled] }
+        emailMode: { type: string, enum: [none, link, content] }
+        showOnOrderPage: { type: boolean }
+        allowResend: { type: boolean }
+        version: { type: integer, minimum: 1 }
+        enabled: { type: boolean }
+    ProductSellableItem:
+      type: object
+      required: [name, priceMinor, currency, currencyDecimals, minimumQuantity, maximumQuantity, deliveryComponentId, enabled]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        listPriceMinor: { type: [string, 'null'], pattern: '^\\d+$' }
+        priceMinor: { type: string, pattern: '^\\d+$' }
+        costMinor: { type: [string, 'null'], pattern: '^\\d+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        currencyDecimals: { type: integer, minimum: 0, maximum: 8 }
+        minimumQuantity: { type: integer, minimum: 1 }
+        maximumQuantity: { type: integer, minimum: 1 }
+        maximumPerCustomer: { type: [integer, 'null'], minimum: 1 }
+        deliveryComponentId: { type: string, format: uuid }
+        enabled: { type: boolean }
+    DownloadAssetSnapshot:
+      type: object
+      required: [id, assetVersion, fileName, contentType, sizeBytes, checksumSha256]
+      properties:
+        id: { type: string, format: uuid }
+        assetVersion: { type: integer, minimum: 1 }
+        fileName: { type: string, minLength: 1, maxLength: 255 }
+        contentType: { type: string, minLength: 1, maxLength: 255 }
+        sizeBytes: { type: integer, minimum: 1 }
+        checksumSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+    Problem:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    AutomationCallback:
+      type: object
+      required: [jobId, status]
+      properties:
+        jobId: { type: string, format: uuid }
+        providerJobId: { type: string, maxLength: 255 }
+        runUrl: { type: string, format: uri, maxLength: 2000 }
+        status: { type: string, enum: [running, succeeded, failed] }
+        failureCode: { type: string, maxLength: 120 }
+    EntitlementPolicy:
+      type: object
+      required: [durationMs, usageLimit, accessLimit, activationTrigger, exhaustionRule, renewalMode]
+      properties:
+        durationMs: { type: [integer, 'null'], minimum: 1000 }
+        usageLimit: { type: [integer, 'null'], minimum: 1 }
+        accessLimit: { type: [integer, 'null'], minimum: 1 }
+        activationTrigger: { type: string, const: delivery_completed }
+        exhaustionRule: { type: string, const: first_limit_reached }
+        renewalMode: { type: string, enum: [stack, disabled] }
+    DeliveryPresentationPolicy:
+      type: object
+      required: [showOnOrderPage, accountLibraryEnabled, emailMode, allowResend]
+      properties:
+        showOnOrderPage: { type: boolean }
+        accountLibraryEnabled: { type: boolean, const: true }
+        emailMode: { type: string, enum: [none, link, content] }
+        allowResend: { type: boolean }
+      description: >-
+        Content email is additionally restricted to permanent, unlimited-access
+        stock text. Download files and automation artifacts always use claim links.
+    PaymentQuoteSnapshot:
+      type: object
+      required: [amountMinor, currency, currencyDecimals, rate, direction, source, adjustmentBps, observedAt]
+      properties:
+        amountMinor: { type: string, pattern: '^[0-9]+$' }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        currencyDecimals: { type: integer, minimum: 0, maximum: 20 }
+        rateId: { type: [string, 'null'], format: uuid }
+        rate: { type: string, pattern: '^(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)$' }
+        direction: { type: string, enum: [parity, multiply, divide] }
+        source: { type: string }
+        adjustmentBps: { type: integer, minimum: -9999, maximum: 100000 }
+        observedAt: { type: integer, description: Unix time in milliseconds }
+      description: Immutable store-owned quote saved on each payment attempt.
+    OrderAccess:
+      type: object
+      properties:
+        lookupToken: { type: string, pattern: '^[0-9a-fA-F]{48}$' }
+      description: A customer session may replace the guest lookup token.
+    CheckoutItem:
+      type: object
+      required: [sellableItemId, quantity, inputValues]
+      properties:
+        sellableItemId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 1000 }
+        inputValues: { type: object, additionalProperties: true }
+        renewedFromEntitlementId: { type: [string, 'null'], format: uuid }
+    MultiItemCheckout:
+      type: object
+      required: [items, email, idempotencyKey, termsAccepted]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: '#/components/schemas/CheckoutItem' }
+        email: { type: string, format: email }
+        couponCode: { type: string, maxLength: 64 }
+        customerNote: { type: string, maxLength: 1000 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+        commerceSessionId: { type: string, format: uuid }
+        paymentChannelId: { type: [string, 'null'], format: uuid }
+        paymentCurrency: { type: [string, 'null'], pattern: '^[A-Z]{3}$' }
+        termsAccepted: { type: boolean, const: true }
+    CartVersion:
+      type: object
+      required: [expectedVersion]
+      properties:
+        expectedVersion: { type: integer, minimum: 1 }
+  responses:
+    Problem:
+      description: Structured, redacted error
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Problem' } }
+    Image:
+      description: Controlled public image response
+      headers:
+        X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+      content:
+        image/png: { schema: { type: string, format: binary } }
+        image/jpeg: { schema: { type: string, format: binary } }
+        image/webp: { schema: { type: string, format: binary } }
+        image/avif: { schema: { type: string, format: binary } }
+    Binary:
+      description: Authorized private object; Content-Disposition supplies a safe filename
+      content:
+        application/octet-stream: { schema: { type: string, format: binary } }

@@ -1,0 +1,968 @@
+import { z } from "zod";
+import {
+	activateEntitlementGrantStatements,
+	createEntitlementGrantStatements,
+	type EntitlementOrderItem,
+} from "#/features/entitlements/server/ledger";
+import { quotePaymentCurrency } from "#/features/exchange-rates/server/quote";
+import type { PaymentWebhookEvent } from "#/features/shop-payments/provider";
+import { getPaymentProvider } from "#/features/shop-payments/providers";
+import { epusdtMerchantOrderId } from "#/features/shop-payments/providers/epusdt";
+import { DomainError } from "#/lib/domain-error";
+import { decryptSecret } from "#/lib/secrets";
+import { decimalToMinor } from "#/lib/units";
+import { loadRuntimeConfig } from "#/server/runtime-config";
+
+type PaymentContext = {
+	attempt_id: string;
+	attempt_status: string;
+	order_id: string;
+	order_number: string;
+	order_status: string;
+	order_version: number;
+	amount_minor: string;
+	currency: string;
+	currency_decimals: number;
+	contact_email: string;
+	channel_id: string;
+	provider: string;
+	credential_encrypted: string | null;
+};
+
+type PaymentCreationContext = {
+	order_id: string;
+	order_number: string;
+	order_status: string;
+	amount_minor: string;
+	currency: string;
+	currency_decimals: number;
+	contact_email: string;
+	channel_id: string;
+	provider: string;
+	credential_encrypted: string | null;
+	default_token: string;
+	default_network: string;
+};
+
+type OrderItem = EntitlementOrderItem & {
+	fulfillment_source: "local" | "supplier";
+	supplier_status: string | null;
+	supplier_binding_id: string | null;
+	supplier_provider: string | null;
+	supplier_origin: string | null;
+	supplier_protocol: string | null;
+	upstream_product_id: string | null;
+	upstream_sku_id: string | null;
+	upstream_product_name: string | null;
+	upstream_sku_name: string | null;
+	reference_cost_minor: string | null;
+	max_cost_minor: string | null;
+	supplier_currency: string | null;
+};
+
+const createPaymentSchema = z.object({
+	orderId: z.uuid(),
+	channelId: z.uuid(),
+	idempotencyKey: z.string().trim().min(8).max(200),
+	paymentCurrency: z
+		.string()
+		.trim()
+		.toUpperCase()
+		.regex(/^[A-Z]{3}$/)
+		.optional(),
+	successUrl: z.url(),
+	cancelUrl: z.url(),
+	payerIp: z.ipv4().nullable().default(null),
+});
+
+export async function createShopPayment(
+	db: D1Database,
+	rawInput: z.input<typeof createPaymentSchema>,
+	fetcher: typeof fetch = fetch,
+) {
+	const input = createPaymentSchema.parse(rawInput);
+	const existing = await loadPaymentAttemptByIdempotency(
+		db,
+		input.idempotencyKey,
+	);
+	if (existing) {
+		assertPaymentIdempotencyScope(existing, input);
+		return presentAttempt(existing);
+	}
+
+	const context = await db
+		.prepare(
+			`SELECT o.id AS order_id, o.order_number, o.status AS order_status,
+			 o.total_minor AS amount_minor, o.currency, o.currency_decimals,
+			 o.contact_email,
+			 pc.id AS channel_id, pc.provider, pc.credential_encrypted,
+			 pc.default_token, pc.default_network
+			 FROM shop_orders o JOIN payment_channels pc ON pc.id = ?
+			 WHERE o.id = ? AND pc.enabled = 1 LIMIT 1`,
+		)
+		.bind(input.channelId, input.orderId)
+		.first<PaymentCreationContext>();
+	if (!context)
+		throw new DomainError(
+			"payment_channel_unavailable",
+			404,
+			"Payment channel unavailable",
+		);
+	if (context.order_status !== "pending_payment")
+		throw new DomainError("order_not_payable", 409, "Order cannot be paid");
+	const quote = await quotePaymentCurrency(db, {
+		amountMinor: context.amount_minor,
+		currency: context.currency,
+		currencyDecimals: context.currency_decimals,
+		paymentCurrency: input.paymentCurrency ?? context.currency,
+	});
+	const credential = await loadCredential(db, context.credential_encrypted);
+	const attemptId = crypto.randomUUID();
+	const now = Date.now();
+	const claimed = await db
+		.prepare(
+			`INSERT INTO payment_attempts
+			 (id, order_id, channel_id, idempotency_key, status, amount_minor, currency,
+			  currency_decimals, exchange_rate_id, exchange_rate, exchange_rate_direction,
+			  exchange_rate_source, exchange_rate_adjustment_bps, exchange_rate_observed_at,
+			  created_at, updated_at)
+			 VALUES (?, ?, ?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(idempotency_key) DO NOTHING`,
+		)
+		.bind(
+			attemptId,
+			input.orderId,
+			input.channelId,
+			input.idempotencyKey,
+			quote.amountMinor,
+			quote.currency,
+			quote.currencyDecimals,
+			quote.rateId,
+			quote.rate,
+			quote.rateDirection,
+			quote.rateSource,
+			quote.rateAdjustmentBps,
+			quote.rateObservedAt,
+			now,
+			now,
+		)
+		.run();
+	if (Number(claimed.meta.changes ?? 0) !== 1) {
+		const replay = await loadPaymentAttemptByIdempotency(
+			db,
+			input.idempotencyKey,
+		);
+		if (!replay)
+			throw new DomainError(
+				"payment_idempotency_conflict",
+				409,
+				"Payment creation conflicted; retry",
+			);
+		assertPaymentIdempotencyScope(replay, input);
+		return presentAttempt(replay);
+	}
+	try {
+		const payment = await getPaymentProvider(context.provider).createPayment(
+			{
+				attemptId,
+				orderId: context.order_id,
+				orderNumber: context.order_number,
+				amountMinor: quote.amountMinor,
+				currency: quote.currency,
+				currencyDecimals: quote.currencyDecimals,
+				customerEmail: context.contact_email,
+				description: `Order ${context.order_number}`,
+				successUrl: input.successUrl,
+				cancelUrl: input.cancelUrl,
+				webhookUrl: new URL(
+					`/api/shop/payments/${encodeURIComponent(input.channelId)}/webhook`,
+					input.successUrl,
+				).toString(),
+				defaultToken: context.default_token,
+				defaultNetwork: context.default_network,
+				payerIp: input.payerIp,
+			},
+			credential,
+			fetcher,
+		);
+		await db
+			.prepare(
+				`UPDATE payment_attempts SET provider_payment_id = ?, checkout_url = ?,
+				 provider_expires_at = ?, status = 'pending', updated_at = ?
+				 WHERE id = ? AND status = 'created'`,
+			)
+			.bind(
+				payment.providerPaymentId,
+				payment.checkoutUrl,
+				payment.expiresAt,
+				Date.now(),
+				attemptId,
+			)
+			.run();
+		return { id: attemptId, status: "pending", ...payment };
+	} catch (error) {
+		await db
+			.prepare(
+				"UPDATE payment_attempts SET status = 'failed', failure_code = 'provider_create_failed', updated_at = ? WHERE id = ?",
+			)
+			.bind(Date.now(), attemptId)
+			.run();
+		throw error;
+	}
+}
+
+export async function handleShopPaymentWebhook(
+	request: Request,
+	channelId: string,
+	db: D1Database,
+) {
+	const channel = await db
+		.prepare(
+			"SELECT provider, credential_encrypted FROM payment_channels WHERE id = ? AND enabled = 1 LIMIT 1",
+		)
+		.bind(channelId)
+		.first<{ provider: string; credential_encrypted: string | null }>();
+	if (!channel)
+		throw new DomainError(
+			"payment_channel_not_found",
+			404,
+			"Payment channel not found",
+		);
+	const credential = await loadCredential(db, channel.credential_encrypted);
+	const event = await getPaymentProvider(channel.provider).parseWebhook(
+		request,
+		credential,
+	);
+	return {
+		provider: channel.provider,
+		...(await processShopPaymentEvent(db, channelId, event)),
+	};
+}
+
+export async function processShopPaymentEvent(
+	db: D1Database,
+	channelId: string,
+	event: PaymentWebhookEvent,
+) {
+	const duplicate = await findPaymentReplayReceipt(
+		db,
+		channelId,
+		event.providerEventId,
+	);
+	if (duplicate) return presentPaymentReplayReceipt(duplicate, event);
+	const context = await loadPaymentContext(
+		db,
+		channelId,
+		event.providerPaymentId,
+	);
+	validateEventMoney(context, event);
+	if (context.attempt_status === "succeeded") {
+		const result = await runPaymentEventBatch(db, channelId, event, [
+			paymentEventStatement(
+				db,
+				channelId,
+				context.attempt_id,
+				event,
+				"processed",
+				Date.now(),
+			),
+		]);
+		if (result.duplicate)
+			return presentPaymentReplayReceipt(result.duplicate, event);
+		return { duplicate: true, status: "processed" };
+	}
+	if (event.type !== "payment_succeeded") {
+		const status = event.type === "payment_expired" ? "expired" : "failed";
+		const now = Date.now();
+		const result = await runPaymentEventBatch(db, channelId, event, [
+			paymentEventStatement(
+				db,
+				channelId,
+				context.attempt_id,
+				event,
+				"processed",
+				now,
+			),
+			db
+				.prepare(
+					"UPDATE payment_attempts SET status = ?, failure_code = ?, updated_at = ? WHERE id = ? AND status IN ('created', 'pending')",
+				)
+				.bind(status, event.type, now, context.attempt_id),
+		]);
+		if (result.duplicate)
+			return presentPaymentReplayReceipt(result.duplicate, event);
+		return { duplicate: false, status };
+	}
+	if (context.order_status !== "pending_payment")
+		throw new DomainError(
+			"order_not_payable",
+			409,
+			"Order cannot accept payment",
+		);
+
+	const items = await db
+		.prepare(`${orderItemsForFulfillmentSql} WHERE oi.order_id = ?`)
+		.bind(context.order_id)
+		.all<OrderItem>();
+	const now = Date.now();
+	const nextVersion = context.order_version + 1;
+	const statements: D1PreparedStatement[] = [
+		paymentEventStatement(
+			db,
+			channelId,
+			context.attempt_id,
+			event,
+			"processed",
+			now,
+		),
+		db
+			.prepare(
+				`UPDATE payment_attempts SET status = 'succeeded', succeeded_at = ?,
+			 updated_at = ?, failure_code = NULL WHERE id = ? AND status IN ('created', 'pending')`,
+			)
+			.bind(now, now, context.attempt_id),
+		db
+			.prepare(
+				`UPDATE shop_orders SET status = 'paid', paid_minor = total_minor,
+			 paid_at = ?, version = ?, updated_at = ?
+			 WHERE id = ? AND status = 'pending_payment' AND version = ?`,
+			)
+			.bind(now, nextVersion, now, context.order_id, context.order_version),
+		db
+			.prepare(
+				`INSERT INTO shop_order_events
+			 (id, order_id, event_type, visibility, from_status, to_status, order_version,
+			  note, actor_type, created_at)
+			 SELECT ?, id, 'payment_succeeded', 'customer', 'pending_payment', 'paid', ?,
+			  NULL, 'provider', ? FROM shop_orders WHERE id = ? AND status = 'paid' AND version = ?`,
+			)
+			.bind(
+				crypto.randomUUID(),
+				nextVersion,
+				now,
+				context.order_id,
+				nextVersion,
+			),
+	];
+	for (const item of items.results)
+		statements.push(...fulfillmentStatements(db, context.order_id, item, now));
+	statements.push(
+		db
+			.prepare(
+				`UPDATE coupon_redemptions SET status = 'consumed', updated_at = ?
+				 WHERE order_id = ? AND status = 'reserved'`,
+			)
+			.bind(now, context.order_id),
+		db
+			.prepare(
+				`INSERT INTO outbox_events
+			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
+			  status, attempt_count, created_at, updated_at)
+			 SELECT ?, 'shop_order.paid', 'shop_order', id, ?, ?, 'pending', 0, ?, ?
+			 FROM shop_orders WHERE id = ? AND status = 'paid' AND version = ?`,
+			)
+			.bind(
+				crypto.randomUUID(),
+				`shop-order-paid:${context.order_id}:${nextVersion}`,
+				JSON.stringify({ orderId: context.order_id, version: nextVersion }),
+				now,
+				now,
+				context.order_id,
+				nextVersion,
+			),
+		db
+			.prepare(
+				`INSERT INTO commerce_events
+				 (id, event_type, session_id, order_id, currency, amount_minor, created_at)
+				 SELECT ?, 'payment_succeeded', event.session_id, orders.id,
+				  orders.currency, orders.total_minor, ?
+				 FROM commerce_events event
+				 JOIN shop_orders orders ON orders.id = event.order_id
+				 WHERE event.order_id = ? AND event.event_type = 'order_created'
+				 ORDER BY event.created_at, event.id LIMIT 1`,
+			)
+			.bind(crypto.randomUUID(), now, context.order_id),
+	);
+	const result = await runPaymentEventBatch(db, channelId, event, statements);
+	if (result.duplicate)
+		return presentPaymentReplayReceipt(result.duplicate, event);
+	if (Number(result.results[2]?.meta.changes ?? 0) !== 1)
+		throw new DomainError(
+			"order_version_conflict",
+			409,
+			"Order changed; retry event",
+		);
+	return { duplicate: false, status: "succeeded" };
+}
+
+export async function completeFreeStoreOrder(db: D1Database, orderId: string) {
+	const order = await db
+		.prepare(
+			`SELECT id, status, version, total_minor FROM shop_orders
+			 WHERE id = ? LIMIT 1`,
+		)
+		.bind(orderId)
+		.first<{
+			id: string;
+			status: string;
+			version: number;
+			total_minor: string;
+		}>();
+	if (!order) throw new DomainError("order_not_found", 404, "Order not found");
+	if (order.total_minor !== "0")
+		throw new DomainError("order_payment_required", 409, "Payment is required");
+	if (order.status === "paid" || order.status === "completed")
+		return { duplicate: true, status: order.status };
+	if (order.status !== "pending_payment")
+		throw new DomainError(
+			"order_not_payable",
+			409,
+			"Order cannot be completed",
+		);
+	const items = await db
+		.prepare(`${orderItemsForFulfillmentSql} WHERE oi.order_id = ?`)
+		.bind(order.id)
+		.all<OrderItem>();
+	const now = Date.now();
+	const version = order.version + 1;
+	const statements: D1PreparedStatement[] = [
+		db
+			.prepare(
+				`UPDATE shop_orders SET status = 'paid', paid_minor = '0', paid_at = ?,
+				 version = ?, updated_at = ? WHERE id = ? AND status = 'pending_payment'
+				 AND version = ? AND total_minor = '0'`,
+			)
+			.bind(now, version, now, order.id, order.version),
+		db
+			.prepare(
+				`INSERT INTO shop_order_events
+				 (id, order_id, event_type, visibility, from_status, to_status,
+				  order_version, actor_type, created_at)
+				 SELECT ?, id, 'payment_not_required', 'customer', 'pending_payment',
+				 'paid', ?, 'system', ? FROM shop_orders
+				 WHERE id = ? AND status = 'paid' AND version = ?`,
+			)
+			.bind(crypto.randomUUID(), version, now, order.id, version),
+	];
+	for (const item of items.results)
+		statements.push(...fulfillmentStatements(db, order.id, item, now));
+	statements.push(
+		db
+			.prepare(
+				`UPDATE coupon_redemptions SET status = 'consumed', updated_at = ?
+				 WHERE order_id = ? AND status = 'reserved'`,
+			)
+			.bind(now, order.id),
+		db
+			.prepare(
+				`INSERT INTO outbox_events
+				 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
+				  status, attempt_count, created_at, updated_at)
+				 SELECT ?, 'shop_order.paid', 'shop_order', id, ?, ?, 'pending', 0, ?, ?
+				 FROM shop_orders WHERE id = ? AND status = 'paid' AND version = ?`,
+			)
+			.bind(
+				crypto.randomUUID(),
+				`shop-order-paid:${order.id}:${version}`,
+				JSON.stringify({ orderId: order.id, version }),
+				now,
+				now,
+				order.id,
+				version,
+			),
+		db
+			.prepare(
+				`INSERT INTO commerce_events
+				 (id, event_type, session_id, order_id, currency, amount_minor, created_at)
+				 SELECT ?, 'payment_succeeded', event.session_id, orders.id,
+				  orders.currency, orders.total_minor, ?
+				 FROM commerce_events event
+				 JOIN shop_orders orders ON orders.id = event.order_id
+				 WHERE event.order_id = ? AND event.event_type = 'order_created'
+				 ORDER BY event.created_at, event.id LIMIT 1`,
+			)
+			.bind(crypto.randomUUID(), now, order.id),
+	);
+	const results = await db.batch(statements);
+	if (Number(results[0]?.meta.changes ?? 0) !== 1)
+		throw new DomainError(
+			"order_version_conflict",
+			409,
+			"Order changed; retry completion",
+		);
+	return { duplicate: false, status: "paid" };
+}
+
+async function loadCredential(db: D1Database, encrypted: string | null) {
+	if (!encrypted) return {};
+	const runtime = await loadRuntimeConfig(db);
+	if (!runtime.commerceSecret)
+		throw new DomainError(
+			"payment_secret_unavailable",
+			503,
+			"Payment configuration unavailable",
+		);
+	return JSON.parse(
+		await decryptSecret(
+			encrypted,
+			runtime.commerceSecret,
+			"payment-credential",
+		),
+	) as unknown;
+}
+
+async function loadPaymentContext(
+	db: D1Database,
+	channelId: string,
+	providerPaymentId: string,
+) {
+	const context = await db
+		.prepare(
+			`SELECT pa.id AS attempt_id, pa.status AS attempt_status, pa.amount_minor,
+			 pa.currency, pa.currency_decimals, pa.channel_id, o.id AS order_id,
+			 o.order_number,
+			 o.status AS order_status, o.version AS order_version, o.contact_email,
+			 pc.provider, pc.credential_encrypted
+			 FROM payment_attempts pa JOIN shop_orders o ON o.id = pa.order_id
+			 JOIN payment_channels pc ON pc.id = pa.channel_id
+			 WHERE pa.channel_id = ? AND pa.provider_payment_id = ? LIMIT 1`,
+		)
+		.bind(channelId, providerPaymentId)
+		.first<PaymentContext>();
+	if (!context)
+		throw new DomainError(
+			"payment_attempt_not_found",
+			404,
+			"Payment attempt not found",
+		);
+	return context;
+}
+
+function validateEventMoney(
+	context: PaymentContext,
+	event: PaymentWebhookEvent,
+) {
+	if (event.type !== "payment_succeeded") return;
+	let decimalMinor: string | null = null;
+	try {
+		decimalMinor =
+			event.amountDecimal == null
+				? null
+				: decimalToMinor(
+						event.amountDecimal,
+						context.currency_decimals,
+					).toString();
+	} catch {
+		throw new DomainError(
+			"payment_amount_mismatch",
+			400,
+			"Payment amount mismatch",
+		);
+	}
+	const expectedMerchantOrderIds = new Set([
+		context.order_number,
+		epusdtMerchantOrderId(context.attempt_id),
+	]);
+	if (
+		(event.amountMinor == null && decimalMinor == null) ||
+		(event.amountMinor != null && event.amountMinor !== context.amount_minor) ||
+		(decimalMinor != null && decimalMinor !== context.amount_minor) ||
+		(event.currency != null &&
+			event.currency.toUpperCase() !== context.currency.toUpperCase()) ||
+		(event.merchantOrderId != null &&
+			!expectedMerchantOrderIds.has(event.merchantOrderId))
+	)
+		throw new DomainError(
+			"payment_amount_mismatch",
+			400,
+			"Payment amount mismatch",
+		);
+}
+
+function paymentEventStatement(
+	db: D1Database,
+	channelId: string,
+	attemptId: string,
+	event: PaymentWebhookEvent,
+	status: "processed" | "rejected",
+	now: number,
+) {
+	return db
+		.prepare(
+			`INSERT INTO replay_receipts
+		 (id, namespace, scope_id, payment_attempt_id, external_id, event_type,
+		  payload_digest, status, processed_at, created_at, updated_at)
+		 VALUES (?, 'payment_webhook', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			crypto.randomUUID(),
+			channelId,
+			attemptId,
+			event.providerEventId,
+			event.type,
+			event.payloadDigest,
+			status,
+			now,
+			now,
+			now,
+		);
+}
+
+type PaymentReplayReceipt = {
+	status: string;
+	event_type: string;
+	payload_digest: string;
+};
+
+async function findPaymentReplayReceipt(
+	db: D1Database,
+	channelId: string,
+	providerEventId: string,
+) {
+	return db
+		.prepare(
+			`SELECT status, event_type, payload_digest FROM replay_receipts
+			 WHERE namespace = 'payment_webhook' AND scope_id = ?
+			  AND external_id = ? LIMIT 1`,
+		)
+		.bind(channelId, providerEventId)
+		.first<PaymentReplayReceipt>();
+}
+
+function presentPaymentReplayReceipt(
+	receipt: PaymentReplayReceipt,
+	event: PaymentWebhookEvent,
+) {
+	if (
+		receipt.event_type !== event.type ||
+		receipt.payload_digest !== event.payloadDigest
+	)
+		throw new DomainError(
+			"payment_replay_conflict",
+			409,
+			"Payment event identifier was reused with different content",
+		);
+	return { duplicate: true as const, status: receipt.status };
+}
+
+async function runPaymentEventBatch(
+	db: D1Database,
+	channelId: string,
+	event: PaymentWebhookEvent,
+	statements: D1PreparedStatement[],
+) {
+	try {
+		return {
+			duplicate: null,
+			results: await db.batch(statements),
+		};
+	} catch (error) {
+		const duplicate = await findPaymentReplayReceipt(
+			db,
+			channelId,
+			event.providerEventId,
+		);
+		if (duplicate) return { duplicate, results: null };
+		throw error;
+	}
+}
+
+function fulfillmentStatements(
+	db: D1Database,
+	orderId: string,
+	item: OrderItem,
+	now: number,
+) {
+	const deliveryId = crypto.randomUUID();
+	const supplierOrderId = crypto.randomUUID();
+	const statements: D1PreparedStatement[] = [];
+	const supplierStock =
+		item.delivery_component_type === "stock" &&
+		item.fulfillment_source === "supplier";
+	if (supplierStock && !supplierBindingReady(item))
+		throw new DomainError(
+			"supplier_binding_unavailable",
+			409,
+			"Supplier binding unavailable",
+		);
+	if (item.delivery_component_type === "stock" && !supplierStock) {
+		statements.push(
+			db
+				.prepare(
+					`UPDATE stock_entries SET status = 'reserved', order_item_id = ?, reserved_at = ?, updated_at = ?
+					 WHERE id IN (SELECT id FROM stock_entries WHERE sellable_item_id = ? AND status = 'available'
+					 ORDER BY created_at, id LIMIT ?)
+					 AND (SELECT COUNT(*) FROM stock_entries WHERE sellable_item_id = ? AND status = 'available') >= ?`,
+				)
+				.bind(
+					item.id,
+					now,
+					now,
+					item.delivery_component_id,
+					item.quantity,
+					item.delivery_component_id,
+					item.quantity,
+				),
+		);
+	}
+	if (item.delivery_component_type === "stock") {
+		statements.push(
+			db
+				.prepare(
+					`INSERT INTO delivery_records
+					 (id, order_item_id, delivery_type, request_key, status, attempt_count, next_attempt_at,
+					  error_code, created_at, updated_at)
+					 SELECT ?, ?, 'stock', ?,
+				  CASE WHEN ? = 1 THEN 'awaiting_supply'
+				   WHEN (SELECT COUNT(*) FROM stock_entries WHERE order_item_id = ? AND status = 'reserved') = ? THEN 'pending'
+				   ELSE 'failed' END,
+				  0, ?,
+				  CASE WHEN ? = 1 THEN NULL
+				   WHEN (SELECT COUNT(*) FROM stock_entries WHERE order_item_id = ? AND status = 'reserved') = ? THEN NULL
+				   ELSE 'inventory_unavailable' END,
+				  ?, ? FROM shop_orders WHERE id = ? AND status = 'paid'`,
+				)
+				.bind(
+					deliveryId,
+					item.id,
+					`initial:${item.id}`,
+					supplierStock,
+					item.id,
+					item.quantity,
+					now,
+					supplierStock,
+					item.id,
+					item.quantity,
+					now,
+					now,
+					orderId,
+				),
+		);
+		if (supplierStock) {
+			const totalCostMinor = (
+				BigInt(item.reference_cost_minor ?? "0") * BigInt(item.quantity)
+			).toString();
+			statements.push(
+				db
+					.prepare(
+						`INSERT INTO supplier_orders
+						 (id, order_id, order_item_id, delivery_record_id,
+						  supplier_binding_id, quantity, quoted_unit_cost_minor,
+						  total_cost_minor, currency, binding_snapshot_json,
+						  state, attempt_count, selection_count, next_retry_at,
+						  created_at, updated_at)
+						 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, ?, ?, ?
+						 FROM shop_orders WHERE id = ? AND status = 'paid'`,
+					)
+					.bind(
+						supplierOrderId,
+						orderId,
+						item.id,
+						deliveryId,
+						item.supplier_binding_id,
+						item.quantity,
+						item.reference_cost_minor,
+						totalCostMinor,
+						item.supplier_currency,
+						JSON.stringify({
+							provider: item.supplier_provider,
+							normalizedApiOrigin: item.supplier_origin,
+							protocolVersion: item.supplier_protocol,
+							upstreamProductId: item.upstream_product_id,
+							upstreamSkuId: item.upstream_sku_id,
+							upstreamProductName: item.upstream_product_name,
+							upstreamSkuName: item.upstream_sku_name,
+							referenceCostMinor: item.reference_cost_minor,
+							maxCostMinor: item.max_cost_minor,
+						}),
+						now,
+						now,
+						now,
+						orderId,
+					),
+			);
+		}
+	} else {
+		statements.push(
+			db
+				.prepare(
+					`INSERT INTO delivery_records
+					 (id, order_item_id, delivery_type, request_key, status, attempt_count, next_attempt_at,
+					  created_at, updated_at)
+					 SELECT ?, ?, ?, ?, 'pending', 0, ?, ?, ?
+				 FROM shop_orders WHERE id = ? AND status = 'paid'`,
+				)
+				.bind(
+					deliveryId,
+					item.id,
+					item.delivery_component_type,
+					`initial:${item.id}`,
+					now,
+					now,
+					now,
+					orderId,
+				),
+		);
+	}
+	const entitlement = createEntitlementGrantStatements(db, orderId, item, now);
+	statements.push(...entitlement.statements);
+	if (item.delivery_component_type === "download")
+		statements.push(
+			db
+				.prepare(
+					`INSERT OR IGNORE INTO order_item_download_assets
+					 (id, order_item_id, download_asset_id, asset_version, object_key, file_name, content_type,
+					  size_bytes, checksum_sha256, created_at, updated_at)
+					 SELECT ? || ':' || asset.id, ?, asset.id, asset.version, asset.object_key, asset.file_name,
+					  asset.content_type, asset.size_bytes, asset.checksum_sha256, ?, ?
+					 FROM download_assets asset JOIN download_asset_sellable_items binding
+					  ON binding.download_asset_id = asset.id
+					   AND binding.sellable_item_id = ?
+					 WHERE asset.product_id = ? AND asset.download_enabled = 1
+					 AND EXISTS (SELECT 1 FROM shop_orders WHERE id = ? AND status = 'paid')`,
+				)
+				.bind(
+					item.id,
+					item.id,
+					now,
+					now,
+					item.delivery_component_id,
+					item.product_id,
+					orderId,
+				),
+			db
+				.prepare(
+					`UPDATE delivery_records SET status = 'failed', error_code = 'download_unavailable',
+					 next_attempt_at = NULL, updated_at = ? WHERE order_item_id = ?
+					 AND status = 'pending' AND NOT EXISTS (
+					  SELECT 1 FROM order_item_download_assets snapshot
+					  WHERE snapshot.order_item_id = ?
+					 )`,
+				)
+				.bind(now, item.id, item.id),
+		);
+	if (
+		item.delivery_component_type === "download" ||
+		item.delivery_component_type === "automation"
+	)
+		statements.push(
+			...activateEntitlementGrantStatements(db, item.id, now, {
+				requireDownloadAsset: item.delivery_component_type === "download",
+			}),
+		);
+	statements.push(
+		db
+			.prepare(
+				`INSERT INTO outbox_events
+			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
+			  status, attempt_count, created_at, updated_at)
+			 SELECT ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?
+			 FROM shop_orders WHERE id = ? AND status = 'paid'`,
+			)
+			.bind(
+				crypto.randomUUID(),
+				supplierStock ? "supplier.requested" : "delivery.requested",
+				supplierStock ? "supplier_order" : "delivery",
+				supplierStock ? supplierOrderId : deliveryId,
+				supplierStock
+					? `supplier-requested:${supplierOrderId}`
+					: `delivery-requested:${deliveryId}`,
+				supplierStock
+					? JSON.stringify({ supplierOrderId })
+					: JSON.stringify({ deliveryId, orderItemId: item.id }),
+				now,
+				now,
+				orderId,
+			),
+	);
+	return statements;
+}
+
+const orderItemsForFulfillmentSql = `SELECT
+ oi.id, oi.sellable_item_id, oi.product_id, oi.delivery_component_id,
+ oi.delivery_component_type, oi.quantity, oi.duration_ms, oi.usage_limit,
+ oi.access_limit, oi.renewed_from_entitlement_id, oi.renewal_mode,
+ oi.definition_version_id, psi.fulfillment_source, psi.supplier_status,
+ sb.id AS supplier_binding_id, sb.provider AS supplier_provider,
+ sb.normalized_api_origin AS supplier_origin,
+ sb.protocol_version AS supplier_protocol,
+ sb.upstream_product_id, sb.upstream_sku_id, sb.upstream_product_name,
+ sb.upstream_sku_name, sb.reference_cost_minor, sb.max_cost_minor,
+ (SELECT sa.currency FROM supplier_accounts sa
+  WHERE sa.provider = sb.provider
+   AND sa.normalized_api_origin = sb.normalized_api_origin
+   AND sa.protocol_version = sb.protocol_version
+  ORDER BY sa.enabled DESC, sa.id LIMIT 1) AS supplier_currency
+ FROM shop_order_items oi
+ JOIN product_sellable_items psi ON psi.id = oi.sellable_item_id
+ LEFT JOIN supplier_bindings sb ON sb.sellable_item_id = oi.sellable_item_id
+  AND sb.enabled = 1`;
+
+function supplierBindingReady(item: OrderItem) {
+	return Boolean(
+		item.supplier_binding_id &&
+			item.supplier_provider &&
+			item.supplier_origin &&
+			item.supplier_protocol &&
+			item.upstream_product_id &&
+			item.upstream_sku_id &&
+			item.reference_cost_minor &&
+			item.max_cost_minor &&
+			item.supplier_currency,
+	);
+}
+
+function presentAttempt(row: {
+	id: string;
+	provider_payment_id: string | null;
+	checkout_url: string | null;
+	provider_expires_at: number | null;
+	status: string;
+}) {
+	return {
+		id: row.id,
+		providerPaymentId: row.provider_payment_id,
+		checkoutUrl: row.checkout_url,
+		expiresAt: row.provider_expires_at,
+		status: row.status,
+	};
+}
+
+type PaymentAttemptReplay = {
+	id: string;
+	order_id: string;
+	channel_id: string;
+	provider_payment_id: string | null;
+	checkout_url: string | null;
+	provider_expires_at: number | null;
+	status: string;
+};
+
+async function loadPaymentAttemptByIdempotency(
+	db: D1Database,
+	idempotencyKey: string,
+) {
+	return db
+		.prepare(
+			`SELECT id, order_id, channel_id, provider_payment_id, checkout_url,
+			 provider_expires_at, status FROM payment_attempts
+			 WHERE idempotency_key = ? LIMIT 1`,
+		)
+		.bind(idempotencyKey)
+		.first<PaymentAttemptReplay>();
+}
+
+function assertPaymentIdempotencyScope(
+	attempt: PaymentAttemptReplay,
+	input: { orderId: string; channelId: string },
+) {
+	if (
+		attempt.order_id !== input.orderId ||
+		attempt.channel_id !== input.channelId
+	)
+		throw new DomainError(
+			"payment_idempotency_conflict",
+			409,
+			"Payment idempotency key belongs to another request",
+		);
+}

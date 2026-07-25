@@ -1,0 +1,104 @@
+import { decryptSecret } from "#/lib/secrets";
+import {
+	authProviderSecretKey,
+	authProviderSecretPurpose,
+	authProviderSettingKeys,
+	parseAuthProviderSettings,
+} from "../provider-settings";
+
+export type RuntimeAuthProvider = {
+	id: string;
+	providerId: string;
+	providerType: "email_password" | "social";
+	displayName: string;
+	clientId: string | null;
+	clientSecret: string | null;
+	scopes: string[];
+	allowSignup: boolean;
+	revision: number;
+	telegramBotUserId: string | null;
+	telegramBotUsername: string | null;
+	telegramBotToken: string | null;
+	telegramMiniAppEnabled: boolean;
+};
+
+export async function loadRuntimeAuthProviders(
+	database: D1Database,
+	authProviderSecret: string,
+	_integrationConfigSecret?: string,
+): Promise<RuntimeAuthProvider[]> {
+	const rows = await database
+		.prepare(
+			`SELECT key, value FROM system_settings
+			 WHERE key IN (?, ?, ?, ?, ?)
+			    OR (key LIKE 'auth.provider.%.secret' AND is_secret = 1)`,
+		)
+		.bind(
+			authProviderSettingKeys.providers,
+			authProviderSettingKeys.revision,
+			authProviderSettingKeys.telegramBotUserId,
+			authProviderSettingKeys.telegramUsername,
+			authProviderSettingKeys.telegramMiniAppEnabled,
+		)
+		.all<{ key: string; value: string }>();
+	const settings = parseAuthProviderSettings(rows.results);
+	const rawValues = new Map(
+		rows.results.map((row) => [row.key, parseStoredValue(row.value)]),
+	);
+	return Promise.all(
+		settings.providers
+			.filter(
+				(provider) => provider.providerId === "credential" || provider.enabled,
+			)
+			.sort(
+				(left, right) =>
+					left.sortOrder - right.sortOrder || left.id.localeCompare(right.id),
+			)
+			.map(async (provider) => {
+				const encrypted = rawValues.get(
+					authProviderSecretKey(provider.providerId),
+				);
+				if (encrypted !== undefined && typeof encrypted !== "string")
+					throw new Error("Authentication provider secret is invalid");
+				if (encrypted && !authProviderSecret)
+					throw new Error("Authentication provider secret is unavailable");
+				const secret = encrypted
+					? await decryptSecret(
+							encrypted,
+							authProviderSecret,
+							authProviderSecretPurpose(provider.providerId),
+						)
+					: null;
+				const telegram = provider.providerId === "telegram";
+				return {
+					id: provider.id,
+					providerId: provider.providerId,
+					providerType: provider.providerType,
+					displayName: provider.displayName,
+					clientId: provider.clientId,
+					clientSecret: secret,
+					scopes: provider.scopes,
+					allowSignup: provider.allowSignup,
+					revision: settings.revision,
+					telegramBotUserId: telegram ? settings.telegram.botUserId : null,
+					telegramBotUsername: telegram ? settings.telegram.username : null,
+					telegramBotToken: telegram ? secret : null,
+					telegramMiniAppEnabled: telegram && settings.telegram.miniAppEnabled,
+				};
+			}),
+	);
+}
+
+export function authProviderRevisionSignature(
+	providers: RuntimeAuthProvider[],
+) {
+	return providers[0]?.revision.toString() ?? "0";
+}
+
+function parseStoredValue(value: string) {
+	try {
+		return JSON.parse(value) as unknown;
+	} catch {
+		return undefined;
+	}
+}

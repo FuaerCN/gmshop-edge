@@ -1,0 +1,698 @@
+import type { GenericEndpointContext } from "@better-auth/core";
+import {
+	APIError,
+	type BetterAuthOptions,
+	type BetterAuthPlugin,
+	betterAuth,
+} from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import { emailOTP } from "better-auth/plugins";
+import { tanstackStartCookies } from "better-auth/tanstack-start";
+import { createTelegramOIDCProvider, telegram } from "better-auth-telegram";
+import { createRemoteJWKSet, jwtVerify } from "jose";
+import * as schema from "#/db/schema";
+import { storefrontCustomerRoleName } from "#/features/access/storefront-access";
+import { telegramIdentityEmail } from "#/features/auth/identity-email";
+import { assertAccountCanBeUnlinked } from "#/features/auth/server/provider-policy";
+import type { RuntimeAuthProvider } from "#/features/auth/server/provider-runtime";
+import {
+	TelegramMiniAppAuthError,
+	verifyTelegramMiniAppInitData,
+} from "#/features/auth/server/telegram-mini-app";
+import { enqueueConfiguredEmailNotification } from "#/features/notifications/server/delivery";
+import { DomainError } from "#/lib/domain-error";
+import type { AppDb } from "#/server/db.server";
+
+export type AuthEnv = {
+	BETTER_AUTH_SECRET: string;
+	BETTER_AUTH_URL: string;
+	TRUSTED_ORIGINS?: string[];
+	AUTH_PROVIDERS?: RuntimeAuthProvider[];
+	AUTH_PROVIDER_SECRET?: string;
+	EMAIL_DELIVERY_ENABLED?: boolean;
+	REQUIRE_EMAIL_VERIFICATION?: boolean;
+	SITE_NAME?: string;
+	SESSION_MAX_AGE_SECONDS?: number;
+};
+
+export function createAuth(db: AppDb, env: AuthEnv) {
+	const authProviders = env.AUTH_PROVIDERS ?? [defaultCredentialProvider];
+	const credential = authProviders.find(
+		(provider) => provider.providerType === "email_password",
+	);
+	const telegramOidcProvider = authProviders.find(
+		(provider) =>
+			provider.providerType === "social" && provider.providerId === "telegram",
+	);
+	const emailDeliveryEnabled = env.EMAIL_DELIVERY_ENABLED === true;
+	const siteName = env.SITE_NAME?.trim() || "GMShop Edge";
+	const trustedOrigins = [
+		env.BETTER_AUTH_URL,
+		...(env.TRUSTED_ORIGINS ?? []),
+	].filter(
+		(value, index, values) => Boolean(value) && values.indexOf(value) === index,
+	);
+	return betterAuth({
+		secret: env.BETTER_AUTH_SECRET,
+		baseURL: env.BETTER_AUTH_URL,
+		trustedOrigins,
+		advanced: {
+			ipAddress: {
+				// Cloudflare Workers receive the authenticated client address in this
+				// single-value header. Better Auth otherwise only checks X-Forwarded-For.
+				ipAddressHeaders: ["cf-connecting-ip"],
+			},
+		},
+		account: {
+			accountLinking: {
+				enabled: true,
+				trustedProviders: ["telegram"],
+				allowDifferentEmails: true,
+			},
+		},
+		database: drizzleAdapter(db, { provider: "sqlite", schema }),
+		databaseHooks: {
+			user: {
+				create: {
+					after: async (newUser) => {
+						const now = Date.now();
+						const assigned = await db.$client
+							.prepare(
+								`UPDATE users SET role_ids = (
+								  SELECT json_array(id) FROM roles
+								  WHERE name = ? AND built_in = 1 AND enabled = 1
+								  LIMIT 1
+								 ), updated_at = CASE
+								  WHEN updated_at >= ? THEN updated_at + 1 ELSE ? END
+								 WHERE id = ? AND EXISTS (
+								  SELECT 1 FROM roles
+								  WHERE name = ? AND built_in = 1 AND enabled = 1
+								 )`,
+							)
+							.bind(
+								storefrontCustomerRoleName,
+								now,
+								now,
+								newUser.id,
+								storefrontCustomerRoleName,
+							)
+							.run();
+						if (Number(assigned.meta.changes ?? 0) !== 1) {
+							await db.$client
+								.prepare(
+									"DELETE FROM users WHERE id = ? AND json_array_length(role_ids) = 0",
+								)
+								.bind(newUser.id)
+								.run();
+							throw APIError.from("INTERNAL_SERVER_ERROR", {
+								code: "CUSTOMER_ROLE_UNAVAILABLE",
+								message: "Customer registration is temporarily unavailable",
+							});
+						}
+					},
+				},
+			},
+		},
+		session: {
+			expiresIn: env.SESSION_MAX_AGE_SECONDS ?? 2_592_000,
+			updateAge: Math.min(
+				86_400,
+				Math.max(
+					3_600,
+					Math.floor((env.SESSION_MAX_AGE_SECONDS ?? 2_592_000) / 4),
+				),
+			),
+		},
+		socialProviders: createSocialProviders(authProviders),
+		user: {
+			additionalFields: {
+				enabled: {
+					type: "boolean",
+					required: false,
+					defaultValue: true,
+					input: false,
+				},
+				preferredLocale: {
+					type: "string",
+					required: false,
+					defaultValue: "en-US",
+					input: true,
+				},
+			},
+		},
+		emailAndPassword: {
+			enabled: true,
+			disableSignUp: !credential?.allowSignup,
+			minPasswordLength: 12,
+			requireEmailVerification:
+				emailDeliveryEnabled && env.REQUIRE_EMAIL_VERIFICATION === true,
+			revokeSessionsOnPasswordReset: true,
+		},
+		emailVerification: emailDeliveryEnabled
+			? {
+					sendOnSignUp: true,
+					autoSignInAfterVerification: true,
+					sendVerificationEmail: async ({ user, url, token }) => {
+						const locale = supportedEmailLocale(
+							(user as { preferredLocale?: unknown }).preferredLocale,
+						);
+						const content =
+							locale === "zh-CN"
+								? {
+										subject: `验证您的 ${siteName} 邮箱`,
+										text: `请使用以下链接验证您的邮箱：\n\n${url}\n\n如果并非您本人注册，请忽略此邮件。`,
+									}
+								: {
+										subject: `Verify your ${siteName} email`,
+										text: `Use this link to verify your email:\n\n${url}\n\nIf you did not create this account, ignore this email.`,
+									};
+						await enqueueConfiguredEmailNotification(db.$client, {
+							event: "auth.email_verification",
+							idempotencyKey: `auth-email-verification:${user.id}:${await tokenDigest(token)}`,
+							to: user.email,
+							locale,
+							...content,
+						});
+					},
+				}
+			: undefined,
+		rateLimit: {
+			enabled: true,
+			window: 60,
+			max: 20,
+			customRules: {
+				"/sign-in/email": { window: 60, max: 5 },
+				"/sign-up/email": { window: 60, max: 5 },
+				"/email-otp/request-password-reset": { window: 60, max: 3 },
+				"/email-otp/reset-password": { window: 60, max: 5 },
+				"/send-verification-email": { window: 60, max: 3 },
+			},
+		},
+		hooks: {
+			before: createAuthMiddleware(async (ctx) => {
+				if (ctx.path === "/telegram/miniapp/signin") {
+					const origin = ctx.headers?.get("origin");
+					if (!origin || !trustedOrigins.includes(origin))
+						throw APIError.from("FORBIDDEN", {
+							code: "UNTRUSTED_ORIGIN",
+							message: "The request origin is not trusted",
+						});
+					await reserveTelegramMiniAppReplay(ctx, telegramOidcProvider);
+					return;
+				}
+				if (ctx.path !== "/unlink-account") return;
+				const session = await getSessionFromCtx(ctx);
+				if (!session) return;
+				const body = ctx.body as
+					| { providerId?: unknown; accountId?: unknown }
+					| undefined;
+				if (typeof body?.providerId !== "string") return;
+				try {
+					await assertAccountCanBeUnlinked(db.$client, {
+						userId: session.user.id,
+						providerId: body.providerId,
+						accountId:
+							typeof body.accountId === "string" ? body.accountId : undefined,
+					});
+				} catch (error) {
+					if (!(error instanceof DomainError)) throw error;
+					throw APIError.from("CONFLICT", {
+						code: "AUTH_LAST_LOGIN_METHOD",
+						message:
+							"Link another enabled login method before unlinking this account",
+					});
+				}
+			}),
+			after: createAuthMiddleware(async (ctx) => {
+				if (ctx.context.returned instanceof APIError) {
+					await auditAuthenticationFailure(db.$client, ctx.path, ctx.headers);
+					return;
+				}
+				const action = securityAuditAction(ctx.path);
+				if (!action) return;
+				const userId =
+					securityAuditUserId(ctx.context) ??
+					(await getSessionFromCtx(ctx).catch(() => null))?.user.id;
+				if (!userId) return;
+				const after =
+					ctx.path === "/change-password"
+						? {
+								revokeOtherSessions: Boolean(
+									(ctx.body as { revokeOtherSessions?: boolean } | undefined)
+										?.revokeOtherSessions,
+								),
+							}
+						: null;
+				await db.$client
+					.prepare(
+						`INSERT INTO audit_logs
+						(id, actor_user_id, action, target_type, target_id, request_id, ip_address, after, created_at)
+						VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)`,
+					)
+					.bind(
+						crypto.randomUUID(),
+						userId,
+						action,
+						userId,
+						ctx.headers?.get("x-request-id") ?? null,
+						ctx.headers?.get("cf-connecting-ip") ?? null,
+						after ? JSON.stringify(after) : null,
+						Date.now(),
+					)
+					.run();
+			}),
+		},
+		plugins: [
+			...(emailDeliveryEnabled
+				? [
+						emailOTP({
+							allowedAttempts: 3,
+							disableSignUp: true,
+							expiresIn: 600,
+							otpLength: 6,
+							rateLimit: { window: 60, max: 3 },
+							storeOTP: "hashed",
+							sendVerificationOTP: async ({ email, otp, type }) => {
+								if (type !== "forget-password")
+									throw APIError.from("BAD_REQUEST", {
+										code: "EMAIL_OTP_FLOW_DISABLED",
+										message: "This email OTP flow is unavailable",
+									});
+								const locale = await loadUserEmailLocale(db.$client, email);
+								const content =
+									locale === "zh-CN"
+										? {
+												subject: `重置您的 ${siteName} 密码`,
+												text: `您的密码重置验证码是 ${otp}。\n\n验证码将在 10 分钟后失效。如果并非您本人操作，请忽略此邮件。`,
+											}
+										: {
+												subject: `Reset your ${siteName} password`,
+												text: `Your password reset code is ${otp}.\n\nIt expires in 10 minutes. If you did not request this, ignore this email.`,
+											};
+								await enqueueConfiguredEmailNotification(db.$client, {
+									event: "auth.password_reset",
+									idempotencyKey: `auth-password-reset:${await tokenDigest(`${email}:${otp}`)}`,
+									to: email,
+									locale,
+									...content,
+								});
+							},
+						}),
+					]
+				: []),
+			...(telegramOidcProvider?.telegramMiniAppEnabled &&
+			telegramOidcProvider.telegramBotToken &&
+			telegramOidcProvider.telegramBotUsername
+				? [
+						telegram({
+							botToken: telegramOidcProvider.telegramBotToken,
+							botUsername: telegramOidcProvider.telegramBotUsername,
+							loginWidget: false,
+							autoCreateUser: telegramOidcProvider.allowSignup,
+							maxAuthAge: 300,
+							miniApp: {
+								enabled: true,
+								validateInitData: true,
+								allowAutoSignin: telegramOidcProvider.allowSignup,
+								mapMiniAppDataToUser: (user) => ({
+									name:
+										[user.first_name, user.last_name]
+											.filter(Boolean)
+											.join(" ") ||
+										user.username ||
+										`Telegram ${user.id}`,
+									email: telegramIdentityEmail(String(user.id)),
+									preferredLocale: telegramPreferredLocale(user.language_code),
+								}),
+							},
+						}),
+					]
+				: []),
+			...(telegramOidcProvider?.clientId && telegramOidcProvider.clientSecret
+				? [telegramOidcBetterAuthPlugin(telegramOidcProvider, db.$client)]
+				: []),
+			enabledUsersPlugin(),
+			tanstackStartCookies(),
+		],
+	});
+}
+
+async function reserveTelegramMiniAppReplay(
+	ctx: GenericEndpointContext,
+	provider: RuntimeAuthProvider | undefined,
+) {
+	if (!provider?.telegramBotToken)
+		throw APIError.from("NOT_FOUND", {
+			code: "AUTH_PROVIDER_UNAVAILABLE",
+			message: "Authentication provider is unavailable",
+		});
+	const initData = (ctx.body as { initData?: unknown } | undefined)?.initData;
+	if (typeof initData !== "string") return;
+	let replayDigest: string;
+	let expiresAt: number;
+	try {
+		const identity = await verifyTelegramMiniAppInitData(
+			initData,
+			provider.telegramBotToken,
+			{ maxAgeMs: 300_000 },
+		);
+		replayDigest = identity.replayDigest;
+		expiresAt = identity.authenticatedAt + 300_000;
+	} catch (error) {
+		if (error instanceof TelegramMiniAppAuthError)
+			throw APIError.from("UNAUTHORIZED", {
+				code: "TELEGRAM_AUTH_INVALID",
+				message: "Telegram authentication is invalid or expired",
+			});
+		throw error;
+	}
+	const reserved = await ctx.context.internalAdapter.reserveVerificationValue({
+		identifier: `telegram-mini-app:${replayDigest}`,
+		value: provider.id,
+		expiresAt: new Date(expiresAt),
+	});
+	if (!reserved)
+		throw APIError.from("UNAUTHORIZED", {
+			code: "TELEGRAM_AUTH_REPLAYED",
+			message: "Telegram authentication is invalid or expired",
+		});
+}
+
+function telegramOidcBetterAuthPlugin(
+	provider: RuntimeAuthProvider,
+	database: D1Database,
+) {
+	const baseProvider = createTelegramOIDCProvider(provider.clientSecret ?? "", {
+		clientId: provider.clientId ?? "",
+		clientSecret: provider.clientSecret ?? "",
+		scopes: provider.scopes,
+		mapOIDCProfileToUser: (claims) => ({
+			email: telegramIdentityEmail(claims.sub),
+		}),
+	});
+	const telegramProvider = {
+		...baseProvider,
+		async createAuthorizationURL(
+			input: Parameters<typeof baseProvider.createAuthorizationURL>[0],
+		) {
+			if (!input.codeVerifier)
+				throw new Error("Telegram OIDC requires a PKCE verifier");
+			const url = await baseProvider.createAuthorizationURL(input);
+			url.searchParams.set("nonce", await oidcNonce(input.codeVerifier));
+			return url;
+		},
+		async validateAuthorizationCode(
+			input: Parameters<typeof baseProvider.validateAuthorizationCode>[0],
+		) {
+			if (!input.codeVerifier)
+				throw new Error("Telegram OIDC requires a PKCE verifier");
+			const tokens = await baseProvider.validateAuthorizationCode(input);
+			if (!tokens?.idToken)
+				throw new Error("Telegram OIDC did not return an ID token");
+			const verified = await jwtVerify(tokens.idToken, telegramOidcJwks, {
+				issuer: "https://oauth.telegram.org",
+				audience: provider.clientId ?? "",
+				algorithms: ["RS256", "ES256", "EdDSA", "ES256K"],
+				clockTolerance: 30,
+				maxTokenAge: "10m",
+				requiredClaims: ["sub", "iat", "exp", "nonce"],
+			});
+			if (verified.payload.nonce !== (await oidcNonce(input.codeVerifier)))
+				throw new Error("Telegram OIDC nonce is invalid");
+			await database
+				.prepare(
+					`INSERT INTO audit_logs
+					 (id, action, target_type, target_id, after, created_at)
+					 VALUES (?, 'auth.telegram_oidc_signed_in', 'auth', ?, ?, ?)`,
+				)
+				.bind(
+					crypto.randomUUID(),
+					`telegram:${verified.payload.sub}`,
+					JSON.stringify({ providerId: "telegram" }),
+					Date.now(),
+				)
+				.run();
+			return tokens;
+		},
+	};
+	return {
+		id: "telegram-oidc-provider",
+		init(ctx) {
+			return {
+				context: {
+					socialProviders: [
+						{
+							...telegramProvider,
+							id: "telegram",
+							options: {
+								...telegramProvider.options,
+								disableImplicitSignUp: !provider.allowSignup,
+							},
+						},
+						...ctx.socialProviders,
+					],
+				},
+			};
+		},
+	} satisfies BetterAuthPlugin;
+}
+
+const telegramOidcJwks = createRemoteJWKSet(
+	new URL("https://oauth.telegram.org/.well-known/jwks.json"),
+);
+
+async function oidcNonce(codeVerifier: string) {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(codeVerifier),
+	);
+	return bytesToBase64Url(new Uint8Array(digest));
+}
+
+function bytesToBase64Url(bytes: Uint8Array) {
+	let binary = "";
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary)
+		.replace(/\+/g, "-")
+		.replace(/\//g, "_")
+		.replace(/=+$/, "");
+}
+
+async function tokenDigest(token: string) {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(token),
+	);
+	return Array.from(new Uint8Array(digest), (byte) =>
+		byte.toString(16).padStart(2, "0"),
+	).join("");
+}
+
+const defaultCredentialProvider = {
+	id: "auth-provider-credential",
+	providerId: "credential",
+	providerType: "email_password",
+	displayName: "Email and password",
+	clientId: null,
+	clientSecret: null,
+	scopes: [],
+	allowSignup: false,
+	revision: 1,
+	telegramBotUserId: null,
+	telegramBotUsername: null,
+	telegramBotToken: null,
+	telegramMiniAppEnabled: false,
+} satisfies RuntimeAuthProvider;
+
+function createSocialProviders(
+	providers: RuntimeAuthProvider[],
+): BetterAuthOptions["socialProviders"] {
+	const find = (providerId: string) =>
+		providers.find(
+			(provider) =>
+				provider.providerType === "social" &&
+				provider.providerId === providerId &&
+				provider.clientId &&
+				provider.clientSecret,
+		);
+	const option = (provider: RuntimeAuthProvider) => ({
+		clientId: provider.clientId ?? "",
+		clientSecret: provider.clientSecret ?? "",
+		scopes: provider.scopes,
+		disableImplicitSignUp: !provider.allowSignup,
+	});
+	const apple = find("apple");
+	const discord = find("discord");
+	const github = find("github");
+	const google = find("google");
+	const line = find("line");
+	const microsoft = find("microsoft");
+	const wechat = find("wechat");
+	return {
+		...(apple ? { apple: option(apple) } : {}),
+		...(discord ? { discord: option(discord) } : {}),
+		...(github ? { github: option(github) } : {}),
+		...(google ? { google: option(google) } : {}),
+		...(line ? { line: option(line) } : {}),
+		...(microsoft ? { microsoft: option(microsoft) } : {}),
+		...(wechat ? { wechat: option(wechat) } : {}),
+	};
+}
+
+function securityAuditAction(path: string) {
+	return (
+		{
+			"/telegram/miniapp/signin": "auth.telegram_mini_app_signed_in",
+			"/sign-in/email": "auth.signed_in",
+			"/sign-up/email": "auth.signed_up",
+			"/sign-out": "auth.signed_out",
+			"/change-password": "auth.password_changed",
+			"/set-password": "auth.password_set",
+			"/email-otp/reset-password": "auth.password_reset",
+			"/verify-email": "auth.email_verified",
+			"/send-verification-email": "auth.verification_requested",
+			"/link-social": "auth.account_link_started",
+			"/unlink-account": "auth.account_unlinked",
+		}[path] ?? null
+	);
+}
+
+async function auditAuthenticationFailure(
+	database: D1Database,
+	path: string,
+	headers: Headers | undefined,
+) {
+	const action = authenticationFailureAction(path);
+	if (!action) return;
+	await database
+		.prepare(
+			`INSERT INTO audit_logs
+			 (id, action, target_type, target_id, request_id, ip_address, after, created_at)
+			 VALUES (?, ?, 'auth', 'anonymous', ?, ?, ?, ?)`,
+		)
+		.bind(
+			crypto.randomUUID(),
+			action,
+			headers?.get("x-request-id") ?? null,
+			headers?.get("cf-connecting-ip") ?? null,
+			JSON.stringify({ path }),
+			Date.now(),
+		)
+		.run();
+}
+
+function authenticationFailureAction(path: string) {
+	if (path === "/callback/telegram") return "auth.telegram_oidc_failed";
+	return (
+		{
+			"/sign-in/email": "auth.sign_in_failed",
+			"/telegram/miniapp/signin": "auth.telegram_mini_app_failed",
+		}[path] ?? null
+	);
+}
+
+function securityAuditUserId(context: {
+	session?: { user?: { id?: string } } | null;
+	newSession?: { user?: { id?: string } } | null;
+	returned?: unknown;
+}) {
+	return (
+		context.session?.user?.id ??
+		context.newSession?.user?.id ??
+		findReturnedUserId(context.returned) ??
+		null
+	);
+}
+
+function findReturnedUserId(value: unknown, depth = 0): string | undefined {
+	if (!value || typeof value !== "object" || depth > 3) return undefined;
+	const object = value as Record<string, unknown>;
+	if (object.user && typeof object.user === "object") {
+		const id = (object.user as Record<string, unknown>).id;
+		if (typeof id === "string") return id;
+	}
+	for (const key of ["response", "data", "result"]) {
+		const id = findReturnedUserId(object[key], depth + 1);
+		if (id) return id;
+	}
+	return undefined;
+}
+
+function supportedEmailLocale(value: unknown): "en-US" | "zh-CN" {
+	return value === "zh-CN" ? "zh-CN" : "en-US";
+}
+
+function telegramPreferredLocale(value: unknown): "en-US" | "zh-CN" {
+	return typeof value === "string" && value.toLowerCase().startsWith("zh")
+		? "zh-CN"
+		: "en-US";
+}
+
+async function loadUserEmailLocale(db: D1Database, email: string) {
+	const user = await db
+		.prepare(
+			"SELECT preferred_locale FROM users WHERE lower(email) = lower(?) LIMIT 1",
+		)
+		.bind(email.trim())
+		.first<{ preferred_locale: string }>();
+	return supportedEmailLocale(user?.preferred_locale);
+}
+
+function enabledUsersPlugin() {
+	return {
+		id: "enabled-users",
+		init() {
+			return {
+				options: {
+					databaseHooks: {
+						user: {
+							create: {
+								async before(newUser: Record<string, unknown>) {
+									return {
+										data: {
+											enabled: true,
+											...newUser,
+											preferredLocale: supportedEmailLocale(
+												newUser.preferredLocale,
+											),
+										},
+									};
+								},
+							},
+						},
+						session: {
+							create: {
+								async before(
+									newSession: { userId?: string },
+									ctx?: {
+										context?: {
+											internalAdapter?: {
+												findUserById?: (id: string) => Promise<unknown>;
+											};
+										};
+									} | null,
+								) {
+									const userId = newSession.userId;
+									const currentUser =
+										userId &&
+										(await ctx?.context?.internalAdapter?.findUserById?.(
+											userId,
+										));
+									if (
+										(currentUser as { enabled?: boolean | null } | null)
+											?.enabled !== true
+									)
+										throw APIError.from("FORBIDDEN", {
+											message: "This user has been disabled.",
+											code: "USER_DISABLED",
+										});
+								},
+							},
+						},
+					},
+				},
+			};
+		},
+	} as unknown as BetterAuthPlugin;
+}
