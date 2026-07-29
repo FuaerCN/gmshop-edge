@@ -1,31 +1,43 @@
 "use client";
 
 import { Link } from "@tanstack/react-router";
-import { CircleUserRound, Menu, ShoppingCart } from "lucide-react";
+import { LogOut, Menu, ShoppingCart } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
 import { Button } from "#/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu";
 import {
 	Sheet,
 	SheetClose,
 	SheetContent,
 	SheetDescription,
 	SheetFooter,
-	SheetHeader,
 	SheetTitle,
 	SheetTrigger,
 } from "#/components/ui/sheet";
 import { authClient } from "#/features/auth/auth-client";
 import { CurrencySwitch } from "#/features/exchange-rates/currency-switch";
 import { useLocalCart } from "#/features/storefront/cart-storage";
+import { accountNavigation } from "#/features/storefront/components/account-navigation";
+import useDialogState from "#/hooks/use-dialog-state";
 import { AppTitle } from "#/layouts/components/app-title";
 import { LocaleSwitch } from "#/layouts/components/locale-switch";
+import { SignOutDialog } from "#/layouts/components/sign-out-dialog";
 import { ThemeSwitch } from "#/layouts/components/theme-switch";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
 
 export function PublicHeader() {
 	const session = authClient.useSession();
-	const signedIn = Boolean(session.data?.user);
+	const user = session.data?.user;
+	const signedIn = Boolean(user);
 	const navigation = publicNavigation({ signedIn });
 	const [stuck, setStuck] = useState(false);
 	useEffect(() => {
@@ -42,7 +54,7 @@ export function PublicHeader() {
 			)}
 		>
 			<div className="container flex h-18 items-center px-4">
-				<Link className="shrink-0" to="/">
+				<Link className="min-w-0 shrink lg:shrink-0" to="/">
 					<AppTitle />
 				</Link>
 				<div className="ms-auto hidden items-center lg:flex">
@@ -62,93 +74,199 @@ export function PublicHeader() {
 						<LocaleSwitch />
 						<ThemeSwitch />
 						<CartAction />
-						<AccountActions signedIn={signedIn} />
+						<DesktopAccountActions user={user} />
 					</div>
 				</div>
-				<MobileNavigation signedIn={signedIn} />
+				<div className="ms-auto flex shrink-0 items-center gap-1 lg:hidden">
+					<CurrencySwitch />
+					<LocaleSwitch />
+					<ThemeSwitch />
+					<MobileNavigation user={user} />
+				</div>
 			</div>
 		</header>
 	);
 }
 
-function MobileNavigation({ signedIn }: { signedIn: boolean }) {
-	const navigation = publicNavigation({ includeCart: true, signedIn });
+type HeaderUser = {
+	name?: string | null;
+	email?: string | null;
+	image?: string | null;
+};
+
+const mobileNavigationLinkClass =
+	"rounded-xl px-4 py-3 font-medium transition-colors hover:bg-accent";
+
+function MobileNavigation({ user }: { user?: HeaderUser | null }) {
+	const signedIn = Boolean(user);
+	const navigation = publicNavigation({
+		includeCart: true,
+		includeOrders: !signedIn,
+		signedIn,
+	});
 	return (
 		<Sheet>
 			<SheetTrigger asChild>
-				<Button className="ms-auto lg:hidden" size="icon" variant="ghost">
+				<Button size="icon" variant="ghost">
 					<Menu />
 					<span className="sr-only">{m.public_open_navigation()}</span>
 				</Button>
 			</SheetTrigger>
-			<SheetContent className="w-[min(22rem,88vw)]">
-				<SheetHeader>
-					<SheetTitle className="sr-only">
-						{m.public_navigation_title()}
-					</SheetTitle>
-					<SheetDescription className="sr-only">
-						{m.public_navigation_description()}
-					</SheetDescription>
-					<AppTitle description />
-				</SheetHeader>
-				<nav className="grid gap-1 px-4 pt-4">
+			<SheetContent className="w-[min(22rem,88vw)] overflow-hidden">
+				<SheetTitle className="sr-only">
+					{m.public_navigation_title()}
+				</SheetTitle>
+				<SheetDescription className="sr-only">
+					{m.public_navigation_description()}
+				</SheetDescription>
+				<nav className="grid min-h-0 min-w-0 gap-1 overflow-x-hidden overflow-y-auto px-4 pt-12">
 					{navigation.map(([label, href]) => (
 						<SheetClose asChild key={href}>
-							<a
-								className="rounded-xl px-4 py-3 font-medium transition-colors hover:bg-accent"
-								href={href}
-							>
+							<a className={mobileNavigationLinkClass} href={href}>
 								{label}
 							</a>
 						</SheetClose>
 					))}
-					<div className="mt-3 grid gap-2">
-						<AccountActions mobile signedIn={signedIn} />
-					</div>
+					{user
+						? accountNavigation.map((item) => (
+								<SheetClose asChild key={item.to}>
+									<Link className={mobileNavigationLinkClass} to={item.to}>
+										{item.label()}
+									</Link>
+								</SheetClose>
+							))
+						: null}
 				</nav>
-				<SheetFooter className="flex-row items-center justify-between">
-					<span className="text-muted-foreground text-xs">
-						{m.public_display_preferences()}
-					</span>
-					<div className="flex items-center gap-1">
-						<CurrencySwitch />
-						<LocaleSwitch />
-						<ThemeSwitch />
-					</div>
+				<SheetFooter className="shrink-0">
+					<MobileUserFooter user={user} />
 				</SheetFooter>
 			</SheetContent>
 		</Sheet>
 	);
 }
 
-function AccountActions({
-	mobile = false,
-	signedIn,
-}: {
-	mobile?: boolean;
-	signedIn: boolean;
-}) {
-	if (!signedIn)
+function MobileUserFooter({ user }: { user?: HeaderUser | null }) {
+	const [signOutOpen, setSignOutOpen] = useDialogState();
+	if (!user)
 		return (
-			<Button asChild className={mobile ? "rounded-xl" : undefined}>
+			<SheetClose asChild>
+				<Link
+					className="rounded-xl bg-primary px-4 py-3 text-center font-medium text-primary-foreground"
+					search={{ redirect: undefined }}
+					to="/sign-in"
+				>
+					{m.public_sign_in()}
+				</Link>
+			</SheetClose>
+		);
+	const name = user.name || user.email || m.store_account_title();
+	const email = user.email || "";
+	const fallback = getUserFallback(name, email);
+	return (
+		<>
+			<div className="flex min-w-0 items-center gap-3 px-1 py-2">
+				<Avatar className="size-9">
+					<AvatarImage alt={name} src={user.image || ""} />
+					<AvatarFallback>{fallback}</AvatarFallback>
+				</Avatar>
+				<div className="min-w-0">
+					<p className="truncate text-sm font-medium">{name}</p>
+					{email ? (
+						<p className="truncate text-xs text-muted-foreground">{email}</p>
+					) : null}
+				</div>
+			</div>
+			<Button
+				className="justify-start rounded-xl"
+				onClick={() => setSignOutOpen(true)}
+				variant="destructive"
+			>
+				<LogOut />
+				{m.layout_signOut_title()}
+			</Button>
+			<SignOutDialog
+				open={Boolean(signOutOpen)}
+				onOpenChange={setSignOutOpen}
+			/>
+		</>
+	);
+}
+
+function DesktopAccountActions({ user }: { user?: HeaderUser | null }) {
+	const [signOutOpen, setSignOutOpen] = useDialogState();
+	if (!user)
+		return (
+			<Button asChild>
 				<Link search={{ redirect: undefined }} to="/sign-in">
 					{m.public_sign_in()}
 				</Link>
 			</Button>
 		);
+	const name = user.name || user.email || m.store_account_title();
+	const email = user.email || "";
+	const fallback = getUserFallback(name, email);
 	return (
-		<Button
-			asChild
-			className={mobile ? "rounded-xl" : "rounded-full"}
-			size={mobile ? "default" : "icon"}
-			variant={mobile ? "default" : "ghost"}
-		>
-			<Link aria-label={m.store_account_title()} to="/account">
-				<CircleUserRound />
-				{mobile ? m.store_account_title() : null}
-			</Link>
-		</Button>
+		<>
+			<DropdownMenu modal={false}>
+				<DropdownMenuTrigger asChild>
+					<Button
+						aria-label={m.store_account_title()}
+						className="rounded-full"
+						size="icon"
+						variant="ghost"
+					>
+						<Avatar className="size-7">
+							<AvatarImage alt={name} src={user.image || ""} />
+							<AvatarFallback>{fallback}</AvatarFallback>
+						</Avatar>
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end" className="w-64">
+					<DropdownMenuLabel className="font-normal">
+						<div className="grid gap-1">
+							<p className="truncate text-sm font-medium">{name}</p>
+							{email ? (
+								<p className="truncate text-xs text-muted-foreground">
+									{email}
+								</p>
+							) : null}
+						</div>
+					</DropdownMenuLabel>
+					<DropdownMenuSeparator />
+					{accountNavigation.map((item) => (
+						<DropdownMenuItem asChild key={item.to}>
+							<Link to={item.to}>
+								<item.icon />
+								{item.label()}
+							</Link>
+						</DropdownMenuItem>
+					))}
+					<DropdownMenuSeparator />
+					<DropdownMenuItem
+						variant="destructive"
+						onClick={() => setSignOutOpen(true)}
+					>
+						<LogOut />
+						{m.layout_signOut_title()}
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+			<SignOutDialog
+				open={Boolean(signOutOpen)}
+				onOpenChange={setSignOutOpen}
+			/>
+		</>
 	);
+}
+
+function getUserFallback(name: string, email: string) {
+	const source = name || email || "U";
+	return source
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((part) => part[0]?.toUpperCase())
+		.join("");
 }
 
 function CartAction() {
@@ -170,16 +288,22 @@ function CartAction() {
 
 function publicNavigation({
 	includeCart = false,
+	includeOrders = true,
 	signedIn,
 }: {
 	includeCart?: boolean;
+	includeOrders?: boolean;
 	signedIn: boolean;
 }) {
-	return [
+	const navigation: Array<readonly [string, string]> = [
 		[m.store_nav_shop(), "/"],
-		...(includeCart ? ([[m.store_cart_title(), "/cart"]] as const) : []),
-		...(signedIn
-			? ([[m.store_account_orders(), "/account/orders"]] as const)
-			: ([[m.store_nav_orders(), "/orders"]] as const)),
-	] as ReadonlyArray<readonly [string, string]>;
+	];
+	if (includeCart) navigation.push([m.store_cart_title(), "/cart"]);
+	if (includeOrders)
+		navigation.push(
+			signedIn
+				? [m.store_account_orders(), "/account/orders"]
+				: [m.store_nav_orders(), "/orders"],
+		);
+	return navigation;
 }
