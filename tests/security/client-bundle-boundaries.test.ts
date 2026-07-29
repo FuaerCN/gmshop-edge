@@ -25,7 +25,8 @@ describe("client bundle boundaries", () => {
 			"src/features/dashboard/components/order-trend-chart.tsx",
 			"src/features/dashboard/components/sales-breakdown-chart.tsx",
 		]);
-		expect(runtimeImportOwners("#/components/pro/editor")).toEqual([
+		expect(runtimeImportOwners("#/components/pro/editor")).toEqual([]);
+		expect(runtimeImportOwners("#/components/pro/editor/client")).toEqual([
 			"src/features/catalog/pages/product-editor.tsx",
 			"src/features/notifications/pages/email-templates.tsx",
 			"src/features/settings/pages/brand.tsx",

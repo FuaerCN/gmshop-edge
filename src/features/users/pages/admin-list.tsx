@@ -172,7 +172,7 @@ export function UsersPage() {
 		await setUserRolesFn({
 			data: {
 				userId: saved.id,
-				roleIds: Array.isArray(values.roles) ? values.roles.map(String) : [],
+				roleIds: adminRoleIdsFromForm(values.roles),
 			},
 		});
 		setEditingUser(null);
@@ -257,6 +257,12 @@ export function UsersPage() {
 			/>
 		</>
 	);
+}
+
+export function adminRoleIdsFromForm(value: unknown) {
+	if (Array.isArray(value)) return value.map(String);
+	if (typeof value === "string") return [value];
+	return [];
 }
 
 function UserEnabledSwitch({
