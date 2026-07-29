@@ -27,18 +27,6 @@ const definitions = {
 	"site.custom_html": z.string().trim().max(100_000),
 	"site.default_locale": z.enum(supportedLocales),
 	"site.logo_url": z.string().max(2_048),
-	"site.background_color": z.union([
-		z.literal(""),
-		z
-			.string()
-			.trim()
-			.regex(/^(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\([^)]{1,80}\))$/i),
-	]),
-	"site.background_image_url": z.union([
-		z.literal(""),
-		z.url().max(2_048),
-		z.string().regex(/^\/api\/site-background(?:\?v=\d+)?$/),
-	]),
 	"orders.allow_guest_checkout": z.boolean(),
 	"orders.default_expiry_ms": z.number().int().min(60_000).max(86_400_000),
 	"orders.max_quantity": z.number().int().min(1).max(1_000),
@@ -84,8 +72,6 @@ const defaults: Record<SettingKey, SettingValue> = {
 	"site.custom_html": "",
 	"site.default_locale": "en-US",
 	"site.logo_url": "",
-	"site.background_color": "",
-	"site.background_image_url": "",
 	"orders.allow_guest_checkout": true,
 	"orders.default_expiry_ms": 900_000,
 	"orders.max_quantity": 100,

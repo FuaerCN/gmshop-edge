@@ -105,7 +105,7 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 			role_assignments: 1,
 			audits: 1,
 			runtime_settings: 4,
-			settings: 32,
+			settings: 30,
 			credential_providers: 1,
 			exchange_rates: Object.keys(defaultFiatExchangeRates).length,
 			enabled_exchange_rates: 1,

@@ -8,9 +8,7 @@ import { FormItem } from "#/components/pro/form";
 import { Button } from "#/components/ui/button";
 import { settingsErrorMessage } from "#/features/settings/error-message";
 import {
-	removeSiteBackgroundFn,
 	removeSiteLogoFn,
-	uploadSiteBackgroundFn,
 	uploadSiteLogoFn,
 } from "#/features/settings/server/admin";
 import {
@@ -38,23 +36,6 @@ export function SiteLogoField({ url, onChanged }: SiteAssetFieldProps) {
 			validate={validateSquareImage}
 			upload={uploadSiteLogoFn}
 			remove={removeSiteLogoFn}
-			onChanged={onChanged}
-		/>
-	);
-}
-
-export function SiteBackgroundField({ url, onChanged }: SiteAssetFieldProps) {
-	return (
-		<SiteAssetField
-			url={url}
-			label={m.settings_base_background_image_url_label()}
-			description={m.settings_background_image_description()}
-			alt={m.settings_base_background_image_url_label()}
-			previewClassName="aspect-video w-full max-w-2xl"
-			imageClassName="object-cover"
-			maxBytes={siteAssetMaxBytes.background}
-			upload={uploadSiteBackgroundFn}
-			remove={removeSiteBackgroundFn}
 			onChanged={onChanged}
 		/>
 	);

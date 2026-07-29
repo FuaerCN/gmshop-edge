@@ -5,20 +5,12 @@ import { useRouter } from "@tanstack/react-router";
 import { Save } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ColorPicker } from "#/components/pro/base/fields/color-picker";
 import { ProEditor } from "#/components/pro/editor/client";
-import {
-	FormItem,
-	ProSchemaForm,
-	type ProSchemaValueField,
-} from "#/components/pro/form";
+import { FormItem, ProSchemaForm } from "#/components/pro/form";
 import { HtmlViewer } from "#/components/pro/viewer/html";
 import { Button } from "#/components/ui/button";
 import { useTheme } from "#/context/theme-provider";
-import {
-	SiteBackgroundField,
-	SiteLogoField,
-} from "#/features/settings/components/site-asset-field";
+import { SiteLogoField } from "#/features/settings/components/site-asset-field";
 import { settingsErrorMessage } from "#/features/settings/error-message";
 import {
 	systemSettingsQueryKey,
@@ -36,7 +28,6 @@ const brandKeys = [
 	"site.seo_description",
 	"site.custom_html",
 	"site.default_locale",
-	"site.background_color",
 ] as const;
 
 export function BrandSettingsPage() {
@@ -69,10 +60,6 @@ export function BrandSettingsPage() {
 					<div className="space-y-6">
 						<SiteLogoField
 							url={String(values.get("site.logo_url") ?? "")}
-							onChanged={invalidateSettings}
-						/>
-						<SiteBackgroundField
-							url={String(values.get("site.background_image_url") ?? "")}
 							onChanged={invalidateSettings}
 						/>
 						<CustomHtmlField
@@ -160,20 +147,6 @@ function brandSchema() {
 			valueType: "textarea" as const,
 			required: false,
 			fieldProps: { rows: 3 },
-		},
-		{
-			name: "site.background_color",
-			label: m.settings_base_background_color_label(),
-			description: m.settings_base_background_color_desc(),
-			valueType: "text" as const,
-			required: false,
-			render: (valueField: ProSchemaValueField) => (
-				<ColorPicker
-					value={String(valueField.value ?? "")}
-					onChange={valueField.onChange}
-					label={m.settings_base_background_color_label()}
-				/>
-			),
 		},
 	];
 }

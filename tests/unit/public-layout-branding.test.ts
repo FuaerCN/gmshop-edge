@@ -5,19 +5,14 @@ const publicLayoutSource = readFileSync(
 	new URL("../../src/layouts/public/index.tsx", import.meta.url),
 	"utf8",
 );
-const rootSource = readFileSync(
-	new URL("../../src/routes/__root.tsx", import.meta.url),
-	"utf8",
-);
-
 describe("public storefront branding", () => {
-	it("scopes the configured background color and image to the public layout", () => {
+	it("uses only the theme background on the public layout", () => {
 		expect(publicLayoutSource).toContain(
-			"backgroundColor, backgroundImageUrl, customHtml",
+			"const { customHtml } = useSiteBrand()",
 		);
-		expect(publicLayoutSource).toContain("backgroundColor: backgroundColor");
-		expect(publicLayoutSource).toContain("backgroundImage: backgroundImageUrl");
-		expect(rootSource).not.toContain("backgroundImageUrl");
-		expect(rootSource).not.toContain("brand.backgroundColor");
+		expect(publicLayoutSource).toContain("bg-background");
+		expect(publicLayoutSource).not.toMatch(
+			/backgroundColor|backgroundImageUrl|backgroundImage:/,
+		);
 	});
 });

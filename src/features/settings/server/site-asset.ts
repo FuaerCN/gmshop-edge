@@ -11,17 +11,10 @@ export type SiteAssetInput = {
 	base64: string;
 };
 
-const assets = {
-	logo: {
-		key: "branding/site-logo",
-		setting: "site.logo_url",
-		url: "/api/site-logo",
-	},
-	background: {
-		key: "branding/site-background",
-		setting: "site.background_image_url",
-		url: "/api/site-background",
-	},
+const siteLogo = {
+	key: "branding/site-logo",
+	setting: "site.logo_url",
+	url: "/api/site-logo",
 } as const;
 
 type SiteAssetDependencies = {
@@ -42,38 +35,29 @@ type SiteAssetDependencies = {
 	ipAddress?: string | null;
 };
 
-export async function uploadSiteAsset(
-	kind: keyof typeof assets,
+export async function uploadSiteLogo(
 	input: SiteAssetInput,
 	dependencies: SiteAssetDependencies,
 ) {
-	const bytes = await validateSiteAsset(kind, input);
-	const asset = assets[kind];
-	await dependencies.bucket.put(asset.key, bytes, {
+	const bytes = await validateSiteLogo(input);
+	await dependencies.bucket.put(siteLogo.key, bytes, {
 		httpMetadata: {
 			contentType: input.contentType,
 			cacheControl: "public, max-age=3600",
 		},
 	});
-	const value = `${asset.url}?v=${Date.now()}`;
-	await saveSiteAssetSetting(asset.setting, value, dependencies);
+	const value = `${siteLogo.url}?v=${Date.now()}`;
+	await saveSiteAssetSetting(value, dependencies);
 	return { url: value };
 }
 
-export async function removeSiteAsset(
-	kind: keyof typeof assets,
-	dependencies: SiteAssetDependencies,
-) {
-	const asset = assets[kind];
-	await dependencies.bucket.delete(asset.key);
-	await saveSiteAssetSetting(asset.setting, "", dependencies);
+export async function removeSiteLogo(dependencies: SiteAssetDependencies) {
+	await dependencies.bucket.delete(siteLogo.key);
+	await saveSiteAssetSetting("", dependencies);
 	return { removed: true as const };
 }
 
-export async function validateSiteAsset(
-	kind: keyof typeof siteAssetMaxBytes,
-	input: SiteAssetInput,
-) {
+export async function validateSiteLogo(input: SiteAssetInput) {
 	let bytes: Uint8Array<ArrayBuffer>;
 	try {
 		bytes = Uint8Array.from(atob(input.base64), (character) =>
@@ -88,7 +72,7 @@ export async function validateSiteAsset(
 	}
 	if (!bytes.length)
 		throw new DomainError("site_asset_invalid", 400, "Site asset is empty");
-	if (bytes.length > siteAssetMaxBytes[kind])
+	if (bytes.length > siteAssetMaxBytes.logo)
 		throw new DomainError(
 			"site_asset_too_large",
 			413,
@@ -102,7 +86,7 @@ export async function validateSiteAsset(
 			400,
 			"Site asset content does not match its image type",
 		);
-	if (kind === "logo" && image.width !== image.height)
+	if (image.width !== image.height)
 		throw new DomainError(
 			"site_logo_not_square",
 			422,
@@ -112,10 +96,10 @@ export async function validateSiteAsset(
 }
 
 async function saveSiteAssetSetting(
-	key: (typeof assets)[keyof typeof assets]["setting"],
 	value: string,
 	dependencies: SiteAssetDependencies,
 ) {
+	const key = siteLogo.setting;
 	const now = Date.now();
 	await dependencies.db.batch([
 		dependencies.db

@@ -1,49 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { validateSiteAsset } from "#/features/settings/server/site-asset";
+import { validateSiteLogo } from "#/features/settings/server/site-asset";
 
 describe("site asset validation and persistence", () => {
 	it("validates the declared type and square logo dimensions before R2", async () => {
 		await expect(
-			validateSiteAsset("logo", encoded("image/png", png(2, 2))),
+			validateSiteLogo(encoded("image/png", png(2, 2))),
 		).resolves.toHaveLength(33);
 		await expect(
-			validateSiteAsset("logo", encoded("image/png", png(3, 2))),
+			validateSiteLogo(encoded("image/png", png(3, 2))),
 		).rejects.toMatchObject({ code: "site_logo_not_square", status: 422 });
 		await expect(
-			validateSiteAsset("background", encoded("image/png", png(3, 2))),
-		).resolves.toHaveLength(33);
-		await expect(
-			validateSiteAsset("background", encoded("image/jpeg", png(3, 2))),
+			validateSiteLogo(encoded("image/jpeg", png(2, 2))),
 		).rejects.toMatchObject({ code: "site_asset_invalid", status: 400 });
 	});
 
 	it("rejects malformed, empty, oversized, and implausibly large images", async () => {
 		await expect(
-			validateSiteAsset("logo", {
+			validateSiteLogo({
 				contentType: "image/png",
 				base64: "%%%",
 			}),
 		).rejects.toMatchObject({ code: "site_asset_invalid", status: 400 });
 		await expect(
-			validateSiteAsset("logo", { contentType: "image/png", base64: "" }),
+			validateSiteLogo({ contentType: "image/png", base64: "" }),
 		).rejects.toMatchObject({ code: "site_asset_invalid", status: 400 });
 		await expect(
-			validateSiteAsset("logo", {
+			validateSiteLogo({
 				contentType: "image/png",
 				base64: toBase64(new Uint8Array(2 * 1024 * 1024 + 1)),
 			}),
 		).rejects.toMatchObject({ code: "site_asset_too_large", status: 413 });
 		await expect(
-			validateSiteAsset("background", encoded("image/png", png(10_001, 1))),
+			validateSiteLogo(encoded("image/png", png(10_001, 10_001))),
 		).rejects.toMatchObject({ code: "site_asset_invalid", status: 400 });
 	});
 
 	it("reads dimensions from all accepted image formats", async () => {
 		await expect(
-			validateSiteAsset("logo", encoded("image/jpeg", jpeg(4, 4))),
+			validateSiteLogo(encoded("image/jpeg", jpeg(4, 4))),
 		).resolves.toBeInstanceOf(Uint8Array);
 		await expect(
-			validateSiteAsset("logo", encoded("image/webp", webp(5, 5))),
+			validateSiteLogo(encoded("image/webp", webp(5, 5))),
 		).resolves.toBeInstanceOf(Uint8Array);
 	});
 });

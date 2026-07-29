@@ -18,11 +18,6 @@ const brandSchema = z.object({
 	title: z.string().min(1).max(80),
 	seoDescription: z.string().max(320).optional(),
 	customHtml: z.string().max(100_000),
-	backgroundColor: z.string().max(86).refine(isSafeBackgroundColor),
-	backgroundImageUrl: z
-		.string()
-		.max(2_048)
-		.refine(isSafeOptionalBackgroundImageUrl),
 	defaultLocale: z.enum(supportedLocales),
 });
 const cacheSchema = z.object({
@@ -91,7 +86,7 @@ export async function invalidateSiteBrandCache(cache?: KVNamespace) {
 async function querySiteBrand(db: D1Database): Promise<SiteBrand> {
 	const rows = await db
 		.prepare(
-			"SELECT key, value FROM system_settings WHERE key IN ('site.name', 'site.description', 'site.seo_title', 'site.seo_description', 'site.custom_html', 'site.logo_url', 'site.background_color', 'site.background_image_url', 'site.default_locale')",
+			"SELECT key, value FROM system_settings WHERE key IN ('site.name', 'site.description', 'site.seo_title', 'site.seo_description', 'site.custom_html', 'site.logo_url', 'site.default_locale')",
 		)
 		.all<{ key: string; value: string }>();
 	const values = new Map(
@@ -107,10 +102,6 @@ async function querySiteBrand(db: D1Database): Promise<SiteBrand> {
 		title: values.get("site.seo_title") || name,
 		...(seoDescription ? { seoDescription } : {}),
 		customHtml: values.get("site.custom_html") || "",
-		backgroundColor: values.get("site.background_color") || "",
-		backgroundImageUrl: safeBackgroundImageUrl(
-			values.get("site.background_image_url"),
-		),
 		defaultLocale:
 			values.get("site.default_locale") || defaultSiteBrand.defaultLocale,
 	});
@@ -199,12 +190,6 @@ function parsePublicSetting(value: string) {
 	}
 }
 
-function safeBackgroundImageUrl(value?: string) {
-	if (/^\/api\/site-background(?:\?v=\d+)?$/.test(value ?? ""))
-		return value ?? "";
-	return safePublicUrl(value);
-}
-
 function safeLogoUrl(value?: string) {
 	if (/^\/api\/site-logo(?:\?v=\d+)?$/.test(value ?? "")) return value ?? "";
 	return safePublicUrl(value) || defaultSiteBrand.logoUrl;
@@ -215,21 +200,6 @@ function isSafeLogoUrl(value: string) {
 		value === defaultSiteBrand.logoUrl ||
 		/^\/api\/site-logo(?:\?v=\d+)?$/.test(value) ||
 		isPublicUrl(value)
-	);
-}
-
-function isSafeOptionalBackgroundImageUrl(value: string) {
-	return (
-		value === "" ||
-		/^\/api\/site-background(?:\?v=\d+)?$/.test(value) ||
-		isPublicUrl(value)
-	);
-}
-
-function isSafeBackgroundColor(value: string) {
-	return (
-		value === "" ||
-		/^(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\([^)]{1,80}\))$/i.test(value)
 	);
 }
 

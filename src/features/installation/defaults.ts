@@ -6,8 +6,6 @@ export const initialCommerceSettings = [
 	{ key: "site.custom_html", value: "" },
 	{ key: "site.default_locale", value: "en-US" },
 	{ key: "site.logo_url", value: "" },
-	{ key: "site.background_color", value: "" },
-	{ key: "site.background_image_url", value: "" },
 	{ key: "orders.allow_guest_checkout", value: true },
 	{ key: "orders.default_expiry_ms", value: 900_000 },
 	{ key: "orders.max_quantity", value: 100 },

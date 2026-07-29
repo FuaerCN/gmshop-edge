@@ -45,7 +45,6 @@ export function isPublicApiRequest(request: Request) {
 	if (request.method === "GET")
 		return (
 			pathname === "/api/site-logo" ||
-			pathname === "/api/site-background" ||
 			publicGetPatterns.some((pattern) => pattern.test(pathname))
 		);
 	if (request.method !== "POST") return false;

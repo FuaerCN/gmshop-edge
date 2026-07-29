@@ -7,8 +7,8 @@ import {
 	systemPermission,
 } from "#/features/access/system-rbac";
 import {
-	removeSiteAsset,
-	uploadSiteAsset,
+	removeSiteLogo,
+	uploadSiteLogo,
 } from "#/features/settings/server/site-asset";
 import {
 	listSystemSettings,
@@ -97,36 +97,15 @@ export const uploadSiteLogoFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		const context = await adminContext(systemPermission("settings", "update"));
-		return uploadSiteAsset("logo", data, siteAssetDependencies(context));
+		return uploadSiteLogo(data, siteAssetDependencies(context));
 	});
 
 export const removeSiteLogoFn = createServerFn({ method: "POST" }).handler(
 	async () => {
 		const context = await adminContext(systemPermission("settings", "update"));
-		return removeSiteAsset("logo", siteAssetDependencies(context));
+		return removeSiteLogo(siteAssetDependencies(context));
 	},
 );
-
-const siteBackgroundInput = z.object({
-	contentType: z.enum(siteAssetContentTypes),
-	base64: z.string().max(8_000_000),
-});
-
-export const uploadSiteBackgroundFn = createServerFn({ method: "POST" })
-	.validator((input: z.input<typeof siteBackgroundInput>) =>
-		siteBackgroundInput.parse(input),
-	)
-	.handler(async ({ data }) => {
-		const context = await adminContext(systemPermission("settings", "update"));
-		return uploadSiteAsset("background", data, siteAssetDependencies(context));
-	});
-
-export const removeSiteBackgroundFn = createServerFn({
-	method: "POST",
-}).handler(async () => {
-	const context = await adminContext(systemPermission("settings", "update"));
-	return removeSiteAsset("background", siteAssetDependencies(context));
-});
 
 function siteAssetDependencies(
 	context: Awaited<ReturnType<typeof adminContext>>,

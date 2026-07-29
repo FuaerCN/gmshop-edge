@@ -7,8 +7,6 @@ export type SiteBrand = {
 	title: string;
 	seoDescription?: string;
 	customHtml: string;
-	backgroundColor: string;
-	backgroundImageUrl: string;
 	defaultLocale: SupportedLocale;
 };
 
@@ -17,7 +15,5 @@ export const defaultSiteBrand: SiteBrand = {
 	logoUrl: "/favicon.png",
 	title: "GMShop Edge",
 	customHtml: "",
-	backgroundColor: "",
-	backgroundImageUrl: "",
 	defaultLocale: "en-US",
 };

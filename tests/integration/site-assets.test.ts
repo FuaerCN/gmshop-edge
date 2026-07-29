@@ -1,8 +1,8 @@
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
-	removeSiteAsset,
-	uploadSiteAsset,
+	removeSiteLogo,
+	uploadSiteLogo,
 } from "#/features/settings/server/site-asset";
 import { loadSiteBrand } from "#/features/settings/server/site-brand";
 import { applyMigrations } from "./migrations";
@@ -34,16 +34,13 @@ describe("site asset storage", () => {
 
 	beforeEach(async () => {
 		await db.batch([
-			db.prepare(
-				"DELETE FROM system_settings WHERE key IN ('site.logo_url', 'site.background_image_url')",
-			),
+			db.prepare("DELETE FROM system_settings WHERE key = 'site.logo_url'"),
 			db.prepare(
 				"DELETE FROM audit_logs WHERE action IN ('site_asset.uploaded', 'site_asset.removed')",
 			),
 		]);
 		await Promise.all([
 			bucket.delete("branding/site-logo"),
-			bucket.delete("branding/site-background"),
 			cache.delete("site-brand:v1"),
 		]);
 	});
@@ -52,8 +49,7 @@ describe("site asset storage", () => {
 
 	it("uploads an inspected asset, updates D1, audits it, and invalidates the brand cache", async () => {
 		await loadSiteBrand(db, cache);
-		const result = await uploadSiteAsset(
-			"logo",
+		const result = await uploadSiteLogo(
 			{ contentType: "image/png", base64: toBase64(png(2, 2)) },
 			dependencies(),
 		);
@@ -88,21 +84,20 @@ describe("site asset storage", () => {
 	});
 
 	it("removes the R2 object and clears the public setting with an audit record", async () => {
-		await uploadSiteAsset(
-			"background",
-			{ contentType: "image/png", base64: toBase64(png(3, 2)) },
+		await uploadSiteLogo(
+			{ contentType: "image/png", base64: toBase64(png(2, 2)) },
 			dependencies(),
 		);
-		await expect(
-			removeSiteAsset("background", dependencies()),
-		).resolves.toEqual({ removed: true });
+		await expect(removeSiteLogo(dependencies())).resolves.toEqual({
+			removed: true,
+		});
 
-		expect(await bucket.get("branding/site-background")).toBeNull();
-		await expect(setting("site.background_image_url")).resolves.toBe('""');
+		expect(await bucket.get("branding/site-logo")).toBeNull();
+		await expect(setting("site.logo_url")).resolves.toBe('""');
 		await expect(
 			db
 				.prepare(
-					"SELECT action FROM audit_logs WHERE target_id = 'site.background_image_url' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+					"SELECT action FROM audit_logs WHERE target_id = 'site.logo_url' ORDER BY created_at DESC, rowid DESC LIMIT 1",
 				)
 				.first(),
 		).resolves.toMatchObject({ action: "site_asset.removed" });

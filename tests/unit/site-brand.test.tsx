@@ -12,8 +12,6 @@ describe("site brand presentation", () => {
 			logoUrl: "/api/site-logo?v=7",
 			title: "Edge Cashier",
 			customHtml: "",
-			backgroundColor: "",
-			backgroundImageUrl: "",
 			defaultLocale: "en-US",
 		};
 		const markup = renderToStaticMarkup(

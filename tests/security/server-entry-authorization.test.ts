@@ -43,7 +43,6 @@ const reviewedPublicServerModules = [
 
 const reviewedInputlessPostFunctions = new Set([
 	"exportAuditLogsFn",
-	"removeSiteBackgroundFn",
 	"removeSiteLogoFn",
 ]);
 

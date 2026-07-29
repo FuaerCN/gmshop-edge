@@ -22,7 +22,7 @@ describe("settings page ownership", () => {
 			/SiteLogoField|SiteBackgroundField|uploadSiteLogoFn|group === "brand"/,
 		);
 		expect(brandPage).toContain("<SiteLogoField");
-		expect(brandPage).toContain("<SiteBackgroundField");
+		expect(brandPage).not.toMatch(/SiteBackgroundField|site\.background_/);
 		expect(brandPage).toContain('name="site.custom_html"');
 		expect(brandPage).toContain("<ProEditor");
 		expect(brandPage).toContain('language="html"');

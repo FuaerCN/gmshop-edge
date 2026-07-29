@@ -29,7 +29,6 @@ describe("signed and customer API boundaries", () => {
 	it("exposes public catalog media only for exact GET routes", () => {
 		for (const path of [
 			"/api/site-logo",
-			"/api/site-background",
 			`/api/configuration-logo/payment/${id}`,
 			"/api/configuration-logo/auth/google",
 			`/api/shop/products/${id}/cover`,
@@ -61,6 +60,7 @@ describe("signed and customer API boundaries", () => {
 			"/api/checkout/26071306234512345678/review",
 			"/api/unknown",
 			"/api/site-logo/extra",
+			"/api/site-background",
 			"/api/configuration-logo/payment/not-a-uuid",
 			"/api/configuration-logo/auth/Google",
 			"/api/configuration-logo/auth/google/extra",

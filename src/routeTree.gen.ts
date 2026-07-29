@@ -16,7 +16,6 @@ import { Route as authRouteRouteImport } from './routes/(auth)/route'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as publicIndexRouteImport } from './routes/(public)/index'
 import { Route as ApiSiteLogoRouteImport } from './routes/api/site-logo'
-import { Route as ApiSiteBackgroundRouteImport } from './routes/api/site-background'
 import { Route as AdminPaymentConfigurationsRouteImport } from './routes/admin/payment-configurations'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminDeliveryRouteImport } from './routes/admin/delivery'
@@ -135,11 +134,6 @@ const publicIndexRoute = publicIndexRouteImport.update({
 const ApiSiteLogoRoute = ApiSiteLogoRouteImport.update({
   id: '/api/site-logo',
   path: '/api/site-logo',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiSiteBackgroundRoute = ApiSiteBackgroundRouteImport.update({
-  id: '/api/site-background',
-  path: '/api/site-background',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminPaymentConfigurationsRoute =
@@ -628,7 +622,6 @@ export interface FileRoutesByFullPath {
   '/admin/delivery': typeof AdminDeliveryRoute
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/payment-configurations': typeof AdminPaymentConfigurationsRoute
-  '/api/site-background': typeof ApiSiteBackgroundRoute
   '/api/site-logo': typeof ApiSiteLogoRoute
   '/': typeof publicIndexRoute
   '/admin/': typeof AdminIndexRoute
@@ -714,7 +707,6 @@ export interface FileRoutesByTo {
   '/admin/delivery': typeof AdminDeliveryRoute
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/payment-configurations': typeof AdminPaymentConfigurationsRoute
-  '/api/site-background': typeof ApiSiteBackgroundRoute
   '/api/site-logo': typeof ApiSiteLogoRoute
   '/': typeof publicIndexRoute
   '/admin': typeof AdminIndexRoute
@@ -810,7 +802,6 @@ export interface FileRoutesById {
   '/admin/delivery': typeof AdminDeliveryRoute
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/payment-configurations': typeof AdminPaymentConfigurationsRoute
-  '/api/site-background': typeof ApiSiteBackgroundRoute
   '/api/site-logo': typeof ApiSiteLogoRoute
   '/(public)/': typeof publicIndexRoute
   '/admin/': typeof AdminIndexRoute
@@ -906,7 +897,6 @@ export interface FileRouteTypes {
     | '/admin/delivery'
     | '/admin/orders'
     | '/admin/payment-configurations'
-    | '/api/site-background'
     | '/api/site-logo'
     | '/'
     | '/admin/'
@@ -992,7 +982,6 @@ export interface FileRouteTypes {
     | '/admin/delivery'
     | '/admin/orders'
     | '/admin/payment-configurations'
-    | '/api/site-background'
     | '/api/site-logo'
     | '/'
     | '/admin'
@@ -1087,7 +1076,6 @@ export interface FileRouteTypes {
     | '/admin/delivery'
     | '/admin/orders'
     | '/admin/payment-configurations'
-    | '/api/site-background'
     | '/api/site-logo'
     | '/(public)/'
     | '/admin/'
@@ -1164,7 +1152,6 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
-  ApiSiteBackgroundRoute: typeof ApiSiteBackgroundRoute
   ApiSiteLogoRoute: typeof ApiSiteLogoRoute
   ApiAdminDownloadAssetsRoute: typeof ApiAdminDownloadAssetsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -1229,13 +1216,6 @@ declare module '@tanstack/react-router' {
       path: '/api/site-logo'
       fullPath: '/api/site-logo'
       preLoaderRoute: typeof ApiSiteLogoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/site-background': {
-      id: '/api/site-background'
-      path: '/api/site-background'
-      fullPath: '/api/site-background'
-      preLoaderRoute: typeof ApiSiteBackgroundRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/payment-configurations': {
@@ -2137,7 +2117,6 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
-  ApiSiteBackgroundRoute: ApiSiteBackgroundRoute,
   ApiSiteLogoRoute: ApiSiteLogoRoute,
   ApiAdminDownloadAssetsRoute: ApiAdminDownloadAssetsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,

@@ -42,7 +42,7 @@ describe("checkout brand settings", () => {
 		vi.spyOn(console, "info").mockImplementation(() => undefined);
 		await database
 			.prepare(
-				"DELETE FROM system_settings WHERE key IN ('site.name', 'site.custom_html', 'site.logo_url', 'site.background_color', 'site.background_image_url', 'site.default_locale')",
+				"DELETE FROM system_settings WHERE key IN ('site.name', 'site.custom_html', 'site.logo_url', 'site.default_locale')",
 			)
 			.run();
 		const entries = await cache.list({ prefix: "site-brand:" });
@@ -160,8 +160,6 @@ describe("checkout brand settings", () => {
 			logoUrl: "/favicon.png",
 			title: "GMShop Edge",
 			customHtml: "",
-			backgroundColor: "",
-			backgroundImageUrl: "",
 			defaultLocale: "en-US",
 		});
 	});
@@ -200,8 +198,6 @@ describe("checkout brand settings", () => {
 			logoUrl: "/favicon.png",
 			title: "GMShop Edge",
 			customHtml: "",
-			backgroundColor: "",
-			backgroundImageUrl: "",
 			defaultLocale: "en-US",
 		});
 	});
@@ -219,8 +215,6 @@ describe("checkout brand settings", () => {
 				logoUrl: "/favicon.png",
 				title: "GMShop Edge",
 				customHtml: "",
-				backgroundColor: "",
-				backgroundImageUrl: "",
 				defaultLocale: "en-US",
 			});
 		} finally {
@@ -236,8 +230,6 @@ describe("checkout brand settings", () => {
 				"site.custom_html":
 					'<script src="https://chat.example/widget.js"></script>',
 				"site.logo_url": "/api/site-logo?v=1",
-				"site.background_color": "#112233cc",
-				"site.background_image_url": "/api/site-background?v=1",
 				"site.default_locale": "zh-CN",
 			}).map(([key, value]) =>
 				database
@@ -252,8 +244,6 @@ describe("checkout brand settings", () => {
 			logoUrl: "/api/site-logo?v=1",
 			title: "Edge Cashier",
 			customHtml: '<script src="https://chat.example/widget.js"></script>',
-			backgroundColor: "#112233cc",
-			backgroundImageUrl: "/api/site-background?v=1",
 			defaultLocale: "zh-CN",
 		});
 	});
