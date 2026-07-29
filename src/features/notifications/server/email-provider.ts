@@ -1,10 +1,3 @@
-import {
-	createMail,
-	type EmailOptions,
-	type Provider,
-	type Result,
-	type EmailAddress as VisulimaEmailAddress,
-} from "@visulima/email";
 import { mailgunProvider } from "@visulima/email/providers/mailgun";
 import { postmarkProvider } from "@visulima/email/providers/postmark";
 import { resendProvider } from "@visulima/email/providers/resend";
@@ -44,10 +37,21 @@ type ProviderEmailMessage = {
 	idempotencyKey: string;
 };
 
+type EmailAddress = {
+	email: string;
+	name?: string;
+};
+
+type EmailSendResult = {
+	data?: { messageId: string };
+	error?: unknown;
+	success: boolean;
+};
+
 export async function sendProviderEmail(
 	config: EmailProviderConfig,
 	message: ProviderEmailMessage,
-): Promise<Result<{ messageId: string }>> {
+): Promise<EmailSendResult> {
 	if (config.provider === "cloudflare_email") {
 		if (!config.cloudflareEmail)
 			throw new DomainError(
@@ -68,8 +72,8 @@ export async function sendProviderEmail(
 		});
 		return { success: true, data: { messageId: result.messageId } };
 	}
-	const mail = createProviderMail(config);
-	return mail.send({
+	const provider = createEmailProvider(config);
+	return provider.sendEmail({
 		from: parseEmailAddress(message.from),
 		to: parseEmailAddress(message.to),
 		...(message.replyTo ? { replyTo: parseEmailAddress(message.replyTo) } : {}),
@@ -80,70 +84,60 @@ export async function sendProviderEmail(
 	});
 }
 
-function createProviderMail(config: EmailProviderConfig) {
+function createEmailProvider(config: EmailProviderConfig) {
 	if (!config.apiKey) throw new Error("Email provider credential is required");
 	switch (config.provider) {
 		case "resend":
-			return createMail(
-				resendProvider({
-					apiKey: config.apiKey,
-					retries: 0,
-					timeout: 10_000,
-				}) as unknown as Provider<unknown, unknown, EmailOptions>,
-			);
+			return resendProvider({
+				apiKey: config.apiKey,
+				retries: 0,
+				timeout: 10_000,
+			});
 		case "postmark":
-			return createMail(
-				postmarkProvider({
-					serverToken: config.apiKey,
-					retries: 0,
-					timeout: 10_000,
-				}),
-			);
+			return postmarkProvider({
+				serverToken: config.apiKey,
+				retries: 0,
+				timeout: 10_000,
+			});
 		case "sendgrid":
-			return createMail(
-				sendGridProvider({
-					apiKey: config.apiKey,
-					retries: 0,
-					timeout: 10_000,
-				}),
-			);
+			return sendGridProvider({
+				apiKey: config.apiKey,
+				retries: 0,
+				timeout: 10_000,
+			});
 		case "mailgun":
 			if (!config.domain) throw new Error("Mailgun domain is required");
-			return createMail(
-				mailgunProvider({
-					apiKey: config.apiKey,
-					domain: config.domain,
-					endpoint:
-						config.region === "eu"
-							? "https://api.eu.mailgun.net"
-							: "https://api.mailgun.net",
-					retries: 0,
-					timeout: 10_000,
-				}),
-			);
+			return mailgunProvider({
+				apiKey: config.apiKey,
+				domain: config.domain,
+				endpoint:
+					config.region === "eu"
+						? "https://api.eu.mailgun.net"
+						: "https://api.mailgun.net",
+				retries: 0,
+				timeout: 10_000,
+			});
 		case "smtp":
 			if (!config.smtpHost || !config.smtpPort || !config.smtpUser)
 				throw new Error("SMTP configuration is incomplete");
-			return createMail(
-				smtpProvider({
-					host: config.smtpHost,
-					port: config.smtpPort,
-					secure: config.smtpPort === 465,
-					user: config.smtpUser,
-					password: config.apiKey,
-					rejectUnauthorized: true,
-					pool: true,
-					maxConnections: 2,
-					retries: 0,
-					timeout: 10_000,
-				}),
-			);
+			return smtpProvider({
+				host: config.smtpHost,
+				port: config.smtpPort,
+				secure: config.smtpPort === 465,
+				user: config.smtpUser,
+				password: config.apiKey,
+				rejectUnauthorized: true,
+				pool: true,
+				maxConnections: 2,
+				retries: 0,
+				timeout: 10_000,
+			});
 		case "cloudflare_email":
 			throw new Error("Cloudflare Email uses the SendEmail binding");
 	}
 }
 
-function parseEmailAddress(value: string): VisulimaEmailAddress {
+function parseEmailAddress(value: string): EmailAddress {
 	const displayAddress = /^(.*?)\s*<([^<>]+)>$/.exec(value.trim());
 	if (!displayAddress) return { email: value.trim() };
 	const name = displayAddress[1]?.trim().replace(/^"|"$/g, "");
