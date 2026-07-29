@@ -205,11 +205,11 @@ export function StorefrontCartPage() {
 										{"coverUrl" in item && item.coverUrl ? (
 											<img
 												alt={item.productName}
-												className="aspect-square size-24 rounded-xl object-cover"
+												className="aspect-video w-24 rounded-xl object-cover"
 												src={item.coverUrl}
 											/>
 										) : (
-											<div className="grid size-24 place-items-center rounded-xl bg-muted">
+											<div className="grid aspect-video w-24 place-items-center rounded-xl bg-muted">
 												<Boxes className="size-8 text-muted-foreground" />
 											</div>
 										)}
@@ -418,7 +418,7 @@ export function CartLoadingSkeleton({ itemCount = 2 }: { itemCount?: number }) {
 						data-skeleton-item="cart"
 						key={key}
 					>
-						<Skeleton className="size-24 rounded-xl" />
+						<Skeleton className="aspect-video w-24 rounded-xl" />
 						<div className="grid gap-2">
 							<Skeleton className="h-5 w-2/3" />
 							<Skeleton className="h-4 w-1/3" />

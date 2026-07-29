@@ -2,16 +2,19 @@ import { describe, expect, it } from "vitest";
 import { validateSiteLogo } from "#/features/settings/server/site-asset";
 
 describe("site asset validation and persistence", () => {
-	it("validates the declared type and square logo dimensions before R2", async () => {
+	it("detects the actual type and validates square logo dimensions before R2", async () => {
 		await expect(
 			validateSiteLogo(encoded("image/png", png(2, 2))),
-		).resolves.toHaveLength(33);
+		).resolves.toMatchObject({
+			bytes: expect.any(Uint8Array),
+			contentType: "image/png",
+		});
 		await expect(
 			validateSiteLogo(encoded("image/png", png(3, 2))),
 		).rejects.toMatchObject({ code: "site_logo_not_square", status: 422 });
 		await expect(
 			validateSiteLogo(encoded("image/jpeg", png(2, 2))),
-		).rejects.toMatchObject({ code: "site_asset_invalid", status: 400 });
+		).resolves.toMatchObject({ contentType: "image/png" });
 	});
 
 	it("rejects malformed, empty, oversized, and implausibly large images", async () => {
@@ -38,10 +41,10 @@ describe("site asset validation and persistence", () => {
 	it("reads dimensions from all accepted image formats", async () => {
 		await expect(
 			validateSiteLogo(encoded("image/jpeg", jpeg(4, 4))),
-		).resolves.toBeInstanceOf(Uint8Array);
+		).resolves.toMatchObject({ contentType: "image/jpeg" });
 		await expect(
 			validateSiteLogo(encoded("image/webp", webp(5, 5))),
-		).resolves.toBeInstanceOf(Uint8Array);
+		).resolves.toMatchObject({ contentType: "image/webp" });
 	});
 });
 

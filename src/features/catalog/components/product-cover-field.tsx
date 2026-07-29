@@ -49,10 +49,6 @@ export function ProductCoverField({
 			toast.error(m.catalog_cover_image_invalid());
 			return false;
 		}
-		if (dimensions.width * 9 !== dimensions.height * 16) {
-			toast.error(m.catalog_cover_ratio_invalid());
-			return false;
-		}
 		const nextUpload = {
 			contentType: file.type,
 			base64: dataUrl.slice(dataUrl.indexOf(",") + 1),

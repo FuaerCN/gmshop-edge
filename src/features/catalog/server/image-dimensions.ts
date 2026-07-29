@@ -19,10 +19,6 @@ export function readImageDimensions(
 		: null;
 }
 
-export function isSixteenByNine(dimensions: { width: number; height: number }) {
-	return dimensions.width * 9 === dimensions.height * 16;
-}
-
 function readPngDimensions(bytes: Uint8Array) {
 	if (
 		bytes.length < 24 ||

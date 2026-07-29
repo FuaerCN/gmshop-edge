@@ -34,15 +34,18 @@ describe("account route flattening", () => {
 	});
 
 	it("presents one settings destination in navigation and the generated tree", () => {
-		const layout = readFileSync(
-			new URL("features/storefront/components/account-layout.tsx", sourceRoot),
+		const navigation = readFileSync(
+			new URL(
+				"features/storefront/components/account-navigation.ts",
+				sourceRoot,
+			),
 			"utf8",
 		);
-		expect(layout).toContain("/account/settings");
+		expect(navigation).toContain("/account/settings");
 		for (const page of legacySettingsRoutes)
-			expect(layout).not.toContain(`/account/${page}`);
+			expect(navigation).not.toContain(`/account/${page}`);
 		for (const page of retainedRoutes)
-			expect(layout).toContain(`/account/${page}`);
+			expect(navigation).toContain(`/account/${page}`);
 
 		const routeTree = readFileSync(
 			new URL("routeTree.gen.ts", sourceRoot),

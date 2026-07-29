@@ -1,21 +1,14 @@
 import { describe, expect, it } from "vitest";
-import {
-	isSixteenByNine,
-	readImageDimensions,
-} from "#/features/catalog/server/image-dimensions";
+import { readImageDimensions } from "#/features/catalog/server/image-dimensions";
 
 describe("product media dimensions", () => {
-	it("reads PNG dimensions and enforces an exact 16:9 image", () => {
+	it("reads dimensions without restricting the image aspect ratio", () => {
 		const png = new Uint8Array(24);
 		png.set([0x89, 0x50, 0x4e, 0x47], 0);
 		writeUint32(png, 16, 1_600);
-		writeUint32(png, 20, 900);
-		const dimensions = readImageDimensions(png, "image/png");
-		expect(dimensions).toEqual({ width: 1_600, height: 900 });
-		expect(dimensions && isSixteenByNine(dimensions)).toBe(true);
 		writeUint32(png, 20, 1_000);
-		const squareish = readImageDimensions(png, "image/png");
-		expect(squareish && isSixteenByNine(squareish)).toBe(false);
+		const dimensions = readImageDimensions(png, "image/png");
+		expect(dimensions).toEqual({ width: 1_600, height: 1_000 });
 	});
 
 	it("rejects content that does not match its declared image type", () => {

@@ -21,7 +21,7 @@ import { removeSellableItemsFromAllCarts } from "#/features/storefront/server/ca
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret, encryptSecret } from "#/lib/secrets";
 import { getAdminRuntimeServerContext } from "#/server/context";
-import { isSixteenByNine, readImageDimensions } from "./image-dimensions";
+import { readImageDimensions } from "./image-dimensions";
 import {
 	fingerprintInventorySecret,
 	maskInventorySecret,
@@ -1187,12 +1187,6 @@ function assertProductMediaImage(bytes: Uint8Array, contentType: string) {
 			"product_media_invalid",
 			400,
 			"Product media is not a valid image",
-		);
-	if (!isSixteenByNine(dimensions))
-		throw new DomainError(
-			"product_cover_ratio_invalid",
-			400,
-			"Product media must use a 16:9 aspect ratio",
 		);
 }
 

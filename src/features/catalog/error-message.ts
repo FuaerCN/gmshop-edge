@@ -13,8 +13,6 @@ export function catalogOperationErrorMessage(error: unknown) {
 			return m.inventory_error_locked();
 		case "inventory_batch_too_large":
 			return m.inventory_error_batch_too_large();
-		case "product_cover_ratio_invalid":
-			return m.catalog_cover_ratio_invalid();
 		case "product_media_invalid":
 			return m.catalog_cover_image_invalid();
 		case "supplier_sellable_item_managed_externally":

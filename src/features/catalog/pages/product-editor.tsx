@@ -1876,8 +1876,8 @@ async function readGalleryUpload(file: File) {
 		reader.readAsDataURL(file);
 	});
 	const dimensions = await readBrowserImageDimensions(preview);
-	if (!dimensions || dimensions.width * 9 !== dimensions.height * 16) {
-		toast.error(m.catalog_cover_ratio_invalid());
+	if (!dimensions) {
+		toast.error(m.catalog_cover_image_invalid());
 		return null;
 	}
 	return {

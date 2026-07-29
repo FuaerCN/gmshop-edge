@@ -39,10 +39,10 @@ export async function uploadSiteLogo(
 	input: SiteAssetInput,
 	dependencies: SiteAssetDependencies,
 ) {
-	const bytes = await validateSiteLogo(input);
-	await dependencies.bucket.put(siteLogo.key, bytes, {
+	const image = await validateSiteLogo(input);
+	await dependencies.bucket.put(siteLogo.key, image.bytes, {
 		httpMetadata: {
-			contentType: input.contentType,
+			contentType: image.contentType,
 			cacheControl: "public, max-age=3600",
 		},
 	});
@@ -80,11 +80,11 @@ export async function validateSiteLogo(input: SiteAssetInput) {
 		);
 
 	const image = await inspectImage(bytes.buffer);
-	if (!image || image.contentType !== input.contentType)
+	if (!image)
 		throw new DomainError(
 			"site_asset_invalid",
 			400,
-			"Site asset content does not match its image type",
+			"Site asset is not a supported image",
 		);
 	if (image.width !== image.height)
 		throw new DomainError(
@@ -92,7 +92,7 @@ export async function validateSiteLogo(input: SiteAssetInput) {
 			422,
 			"Site logo must be square",
 		);
-	return bytes;
+	return { bytes, contentType: image.contentType };
 }
 
 async function saveSiteAssetSetting(

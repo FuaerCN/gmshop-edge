@@ -1,10 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { z } from "zod";
 import { systemPermission } from "#/features/access/system-rbac";
-import {
-	isSixteenByNine,
-	readImageDimensions,
-} from "#/features/catalog/server/image-dimensions";
+import { readImageDimensions } from "#/features/catalog/server/image-dimensions";
 import { DomainError } from "#/lib/domain-error";
 import { createAuditStatement } from "#/server/audit";
 import { getAdminRuntimeServerContext } from "#/server/context";
@@ -741,7 +738,7 @@ async function importProductCover(
 		const bytes = new Uint8Array(await response.arrayBuffer());
 		if (!bytes.length || bytes.length > 5_000_000) return null;
 		const dimensions = readImageDimensions(bytes, contentType);
-		if (!dimensions || !isSixteenByNine(dimensions)) return null;
+		if (!dimensions) return null;
 		const id = crypto.randomUUID();
 		const extension =
 			contentType === "image/jpeg" ? "jpg" : contentType.slice(6);

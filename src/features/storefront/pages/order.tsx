@@ -257,11 +257,11 @@ export function StorefrontOrderPage({
 												{item.coverUrl ? (
 													<img
 														alt={item.productName}
-														className="size-18 rounded-2xl object-cover"
+														className="aspect-video w-18 shrink-0 rounded-2xl object-cover"
 														src={item.coverUrl}
 													/>
 												) : (
-													<div className="grid size-18 place-items-center rounded-2xl bg-muted">
+													<div className="grid aspect-video w-18 shrink-0 place-items-center rounded-2xl bg-muted">
 														<Boxes className="size-6 text-muted-foreground" />
 													</div>
 												)}
@@ -869,7 +869,7 @@ export function OrderLoadingSkeleton() {
 					<div>
 						<Skeleton className="mb-4 h-5 w-28" />
 						<div className="flex items-center gap-4">
-							<Skeleton className="size-18 shrink-0 rounded-2xl" />
+							<Skeleton className="aspect-video w-18 shrink-0 rounded-2xl" />
 							<div className="grid min-w-0 flex-1 gap-2">
 								<Skeleton className="h-5 w-3/4" />
 								<Skeleton className="h-4 w-1/2" />
