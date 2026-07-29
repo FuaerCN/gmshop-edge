@@ -1,4 +1,3 @@
-import { requireRegisteredStorefrontCustomer } from "#/features/access/storefront-access";
 import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { getAuth } from "#/features/auth/server/auth";
 import { DomainError } from "#/lib/domain-error";
@@ -40,17 +39,6 @@ export async function resolveStoreAccount(
 		return null;
 	}
 	const { user } = session;
-	try {
-		await requireRegisteredStorefrontCustomer(db, user.id);
-	} catch (error) {
-		if (
-			!options.required &&
-			error instanceof DomainError &&
-			error.code === "storefront_access_denied"
-		)
-			return null;
-		throw error;
-	}
 	const normalizedEmail = user.email.trim().toLowerCase();
 	if (user.emailVerified && !isInternalIdentityEmail(normalizedEmail))
 		await claimGuestCommerceHistory(db, user.id, normalizedEmail);

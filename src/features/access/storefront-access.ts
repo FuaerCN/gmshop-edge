@@ -61,27 +61,3 @@ export function requireStorefrontPermission(
 			"Storefront access is denied",
 		);
 }
-
-export async function requireRegisteredStorefrontCustomer(
-	db: D1Database,
-	userId: string,
-) {
-	const customerRole = await db
-		.prepare(
-			`SELECT 1 AS allowed FROM users u
-			 JOIN json_each(u.role_ids) assigned
-			 JOIN roles r ON r.id = assigned.value
-			 WHERE u.id = ? AND u.enabled = 1 AND r.name = 'customer'
-			  AND r.enabled = 1
-			 LIMIT 1`,
-		)
-		.bind(userId)
-		.first<{ allowed: number }>();
-	if (!customerRole)
-		throw new DomainError(
-			"storefront_access_denied",
-			403,
-			"This account is not a storefront customer",
-		);
-	requireStorefrontPermission("customer", "account.read");
-}

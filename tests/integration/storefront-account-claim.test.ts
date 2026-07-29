@@ -45,7 +45,7 @@ describe("storefront account commerce history claim", {
 
 	afterEach(async () => miniflare.dispose());
 
-	it("claims matching guest orders, entitlements, and coupon redemptions after email verification", async () => {
+	it("allows any authenticated role and claims matching guest commerce history", async () => {
 		await expect(
 			resolveStoreAccount(db, new Request("https://shop.example/account"), {
 				required: true,
@@ -99,13 +99,13 @@ async function seed(db: D1Database) {
 		db.prepare(
 			`INSERT INTO roles
 			 (id, name, built_in, enabled, permissions_json, created_at, updated_at)
-			 VALUES ('customer-role', 'customer', 1, 1, '{}', 1, 1)`,
+			 VALUES ('root-role', 'root', 1, 1, '{}', 1, 1)`,
 		),
 		db.prepare(
 			`INSERT INTO users
 			 (id, name, email, email_verified, role_ids, created_at, updated_at)
 			 VALUES ('buyer-user', 'Buyer', 'Buyer@Example.com', 1,
-			  '["customer-role"]', 1, 1)`,
+			  '["root-role"]', 1, 1)`,
 		),
 		db.prepare(
 			`INSERT INTO products

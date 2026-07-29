@@ -2,7 +2,6 @@ import { drizzle } from "drizzle-orm/d1";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as schema from "#/db/schema";
-import { requireRegisteredStorefrontCustomer } from "#/features/access/storefront-access";
 import { createAuth } from "#/features/auth/server/auth-factory";
 import { installSystem } from "#/features/installation/server/install";
 import { createInitialRuntimeConfig } from "#/server/runtime-config";
@@ -107,19 +106,6 @@ describe("Better Auth account security flow", () => {
 		expect(failures?.count).toBeGreaterThanOrEqual(5);
 		expect(failures?.payloads).not.toContain(email);
 		expect(failures?.payloads).not.toContain("incorrect-password");
-	});
-
-	it("does not treat an authenticated administrator as a storefront customer", async () => {
-		const root = await database
-			.prepare("SELECT id FROM users WHERE email = ?")
-			.bind(email)
-			.first<{ id: string }>();
-		await expect(
-			requireRegisteredStorefrontCustomer(database, root?.id ?? ""),
-		).rejects.toMatchObject({
-			code: "storefront_access_denied",
-			status: 403,
-		});
 	});
 
 	it("audits self-service password changes without storing either password", async () => {
