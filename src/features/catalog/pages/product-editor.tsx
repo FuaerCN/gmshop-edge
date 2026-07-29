@@ -19,7 +19,7 @@ import { Switch as ProSwitch } from "#/components/pro/base/fields/checkbox";
 import { Input, Textarea } from "#/components/pro/base/fields/input";
 import { Select as ProSelect } from "#/components/pro/base/fields/select";
 import { Upload, UploadTrigger } from "#/components/pro/base/fields/upload";
-import { ProEditor } from "#/components/pro/editor";
+import { ProEditor } from "#/components/pro/editor/client";
 import { FormItem, ProForm } from "#/components/pro/form";
 import { ProArrayField } from "#/components/pro/form/array-field";
 import { Badge } from "#/components/ui/badge";

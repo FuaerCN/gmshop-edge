@@ -1,5 +1,6 @@
 "use client";
 
+import { ClientOnly } from "@tanstack/react-router";
 import { cva } from "class-variance-authority";
 import {
 	CircleCheckIcon,
@@ -244,14 +245,23 @@ export function MarkdownViewer({
 				const lang = /language-([\w-]+)/.exec(className ?? "")?.[1];
 
 				if (lang) {
+					const code = String(children).replace(/\n$/, "");
 					return (
-						<CodeViewer
-							code={String(children).replace(/\n$/, "")}
-							lang={lang}
-							theme={theme}
-							className="not-prose my-5 shadow-sm"
-							title={lang}
-						/>
+						<ClientOnly
+							fallback={
+								<pre className="not-prose my-5 overflow-auto rounded-lg border bg-muted p-4 font-mono text-sm shadow-sm">
+									<code>{code}</code>
+								</pre>
+							}
+						>
+							<CodeViewer
+								code={code}
+								lang={lang}
+								theme={theme}
+								className="not-prose my-5 shadow-sm"
+								title={lang}
+							/>
+						</ClientOnly>
 					);
 				}
 

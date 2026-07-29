@@ -6,7 +6,7 @@ import { Pencil } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
-import { ProEditor } from "#/components/pro/editor";
+import { ProEditor } from "#/components/pro/editor/client";
 import { ModalForm, type ProSchemaFormItem } from "#/components/pro/form";
 import { ProTable } from "#/components/pro/table";
 import {

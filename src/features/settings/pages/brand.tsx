@@ -6,7 +6,7 @@ import { Save } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ColorPicker } from "#/components/pro/base/fields/color-picker";
-import { ProEditor } from "#/components/pro/editor";
+import { ProEditor } from "#/components/pro/editor/client";
 import {
 	FormItem,
 	ProSchemaForm,

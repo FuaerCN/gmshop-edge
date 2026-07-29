@@ -1,4 +1,5 @@
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
+import { ClientOnly } from "@tanstack/react-router";
 import {
 	Boxes,
 	ReceiptText,
@@ -185,11 +186,15 @@ function DashboardContent({ days }: { days: 1 | 7 | 30 | 90 }) {
 						{m.payment_dashboard_order_trend_description()}
 					</p>
 					<div className="mt-5">
-						<Suspense
+						<ClientOnly
 							fallback={<div className="h-72 animate-pulse bg-muted/50" />}
 						>
-							<OrderTrendChart data={data.dailyOrders} />
-						</Suspense>
+							<Suspense
+								fallback={<div className="h-72 animate-pulse bg-muted/50" />}
+							>
+								<OrderTrendChart data={data.dailyOrders} />
+							</Suspense>
+						</ClientOnly>
 					</div>
 				</div>
 				<div className="rounded-xl border bg-card p-5 shadow-sm">
@@ -203,11 +208,15 @@ function DashboardContent({ days }: { days: 1 | 7 | 30 | 90 }) {
 					</p>
 					<div className="mt-4">
 						{sales ? (
-							<Suspense
+							<ClientOnly
 								fallback={<div className="h-64 animate-pulse bg-muted/50" />}
 							>
-								<SalesBreakdownChart sale={sales} />
-							</Suspense>
+								<Suspense
+									fallback={<div className="h-64 animate-pulse bg-muted/50" />}
+								>
+									<SalesBreakdownChart sale={sales} />
+								</Suspense>
+							</ClientOnly>
 						) : null}
 					</div>
 				</div>
