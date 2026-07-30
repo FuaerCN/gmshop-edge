@@ -50,6 +50,39 @@ describe("locale-preserving UI navigation", () => {
 		});
 	});
 
+	it("uses configured SEO fields for home sharing metadata", () => {
+		const head = createHomeSeoHead([
+			{
+				loaderData: {
+					name: "My Store",
+					title: "Configured home title",
+					description: "Store description",
+					seoDescription: "Configured SEO description",
+				},
+			},
+		]);
+
+		expect(head.meta).toContainEqual({ title: "Configured home title" });
+		for (const attribute of [
+			{ name: "description" },
+			{ property: "og:description" },
+			{ name: "twitter:description" },
+		]) {
+			expect(head.meta).toContainEqual({
+				...attribute,
+				content: "Configured SEO description",
+			});
+		}
+		expect(head.meta).toContainEqual({
+			property: "og:title",
+			content: "Configured home title",
+		});
+		expect(head.meta).toContainEqual({
+			name: "twitter:title",
+			content: "Configured home title",
+		});
+	});
+
 	it("publishes one canonical URL without locale-prefixed alternates", () => {
 		const head = createHomeSeoHead([]);
 

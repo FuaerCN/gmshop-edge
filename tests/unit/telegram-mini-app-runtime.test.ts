@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+	bindCssVars: vi.fn(),
 	expand: vi.fn(),
 	init: vi.fn(),
 	miniAppMount: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("@tma.js/sdk", () => {
 		miniAppMount: true,
 		ready: true,
 		requestFullscreen: true,
+		bindCssVars: true,
 		viewportMount: true,
 	};
 	const available = <T extends ReturnType<typeof vi.fn>>(
@@ -30,6 +32,7 @@ vi.mock("@tma.js/sdk", () => {
 			ready: available(mocks.ready, "ready"),
 		},
 		viewport: {
+			bindCssVars: available(mocks.bindCssVars, "bindCssVars"),
 			expand: available(mocks.expand, "expand"),
 			mount: available(mocks.viewportMount, "viewportMount"),
 			requestFullscreen: available(
@@ -66,6 +69,7 @@ describe("Telegram Mini App runtime", () => {
 			"query_id=fullscreen-fallback",
 		);
 		expect(mocks.ready).toHaveBeenCalledOnce();
+		expect(mocks.bindCssVars).toHaveBeenCalledOnce();
 		expect(mocks.expand).toHaveBeenCalledOnce();
 	});
 });

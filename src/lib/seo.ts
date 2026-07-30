@@ -79,7 +79,13 @@ export function createHomeSeoHead(matches: readonly RouteLoaderMatch[]) {
 	const siteName = siteNameFromMatches(matches);
 	const head = createDefaultSeoHead({
 		siteName,
-		description: m.common_seo_description(),
+		title:
+			stringSettingFromMatches(matches, "title") ??
+			`${siteName} – ${m.app_title_description()}`,
+		description:
+			stringSettingFromMatches(matches, "seoDescription") ??
+			stringSettingFromMatches(matches, "description") ??
+			m.common_seo_description(),
 		path: "/",
 	});
 
@@ -92,16 +98,19 @@ export function createHomeSeoHead(matches: readonly RouteLoaderMatch[]) {
 type RouteLoaderMatch = { loaderData?: unknown };
 
 export function siteNameFromMatches(matches: readonly RouteLoaderMatch[]) {
+	return stringSettingFromMatches(matches, "name") ?? defaultSiteBrand.name;
+}
+
+function stringSettingFromMatches(
+	matches: readonly RouteLoaderMatch[],
+	key: string,
+) {
 	for (const match of matches) {
 		const loaderData = match.loaderData;
-		if (
-			!loaderData ||
-			typeof loaderData !== "object" ||
-			!("name" in loaderData)
-		)
+		if (!loaderData || typeof loaderData !== "object" || !(key in loaderData))
 			continue;
-		const name = loaderData.name;
-		if (typeof name === "string" && name.trim()) return name;
+		const value = (loaderData as Record<string, unknown>)[key];
+		if (typeof value === "string" && value.trim()) return value;
 	}
-	return defaultSiteBrand.name;
+	return undefined;
 }

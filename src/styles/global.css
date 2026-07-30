@@ -83,6 +83,16 @@
 	--font-manrope: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
 	--font-noto: "Noto Sans Variable", ui-sans-serif, system-ui, sans-serif;
 	--font-nunito-family: "Nunito Variable", ui-sans-serif, system-ui, sans-serif;
+	--safe-area-inset-top: env(safe-area-inset-top, 0px);
+	--safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+	--safe-top: calc(
+		var(--safe-area-inset-top) +
+		var(--tg-viewport-content-safe-area-inset-top, 0px)
+	);
+	--safe-bottom: calc(
+		var(--safe-area-inset-bottom) +
+		var(--tg-viewport-content-safe-area-inset-bottom, 0px)
+	);
 
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.141 0.005 285.823);
@@ -255,4 +265,8 @@
 
 @utility section-screen {
   min-height: calc(100svh - 4rem);
+}
+
+@utility pt-safe {
+	padding-top: var(--safe-top);
 }

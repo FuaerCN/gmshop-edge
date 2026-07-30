@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+	bindCssVars: vi.fn(),
 	expand: vi.fn(),
 	init: vi.fn(),
 	invalidate: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@tma.js/sdk", () => {
 			ready: available(mocks.ready),
 		},
 		viewport: {
+			bindCssVars: available(mocks.bindCssVars),
 			expand: available(mocks.expand),
 			mount: available(mocks.viewportMount),
 			requestFullscreen: available(mocks.requestFullscreen),
@@ -113,6 +115,7 @@ describe("Telegram Mini App auto sign-in", () => {
 		expect(mocks.miniAppMount).toHaveBeenCalledOnce();
 		expect(mocks.ready).toHaveBeenCalledOnce();
 		expect(mocks.viewportMount).toHaveBeenCalledOnce();
+		expect(mocks.bindCssVars).toHaveBeenCalledOnce();
 		expect(mocks.requestFullscreen).toHaveBeenCalledOnce();
 		expect(mocks.expand).not.toHaveBeenCalled();
 

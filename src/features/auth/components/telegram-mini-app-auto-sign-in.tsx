@@ -66,6 +66,7 @@ export async function startTelegramMiniApp() {
 	}
 	try {
 		if (viewport.mount.isAvailable()) await viewport.mount();
+		if (viewport.bindCssVars.isAvailable()) viewport.bindCssVars();
 		if (viewport.requestFullscreen.isAvailable()) {
 			await viewport.requestFullscreen();
 		} else if (viewport.expand.isAvailable()) {

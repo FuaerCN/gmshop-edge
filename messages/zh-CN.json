@@ -342,7 +342,7 @@
 	"public_navigation_description": "浏览公开网站和账户页面",
 	"store_payment_currency": "显示与支付法币",
 	"public_footer_ready": "服务运行正常",
-	"public_footer_copyright": "© {year} {name} · GPL-3.0-or-later",
+	"public_footer_copyright": "© {year} {name}",
 	"common_select_section": "选择分区",
 	"common_settings_sections": "{title} 分区",
 	"telegram_token_preserve_description": "留空将保留已加密的 Bot Token；替换值会先通过 Telegram 验证再保存",

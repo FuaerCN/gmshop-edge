@@ -50,7 +50,7 @@ export function PublicHeader() {
 	return (
 		<header
 			className={cn(
-				"sticky inset-x-0 top-0 z-50 border-transparent border-b bg-background/90 transition-[border-color,backdrop-filter]",
+				"sticky inset-x-0 top-0 z-50 border-transparent border-b bg-background/90 pt-safe transition-[border-color,backdrop-filter]",
 				stuck && "border-border/70 backdrop-blur-xl",
 			)}
 		>

@@ -342,7 +342,7 @@
 	"public_navigation_description": "Navigate the public website and account pages",
 	"store_payment_currency": "Display and payment currency",
 	"public_footer_ready": "Service operating normally",
-	"public_footer_copyright": "© {year} {name} · GPL-3.0-or-later",
+	"public_footer_copyright": "© {year} {name}",
 	"common_select_section": "Select a section",
 	"common_settings_sections": "{title} sections",
 	"telegram_token_preserve_description": "Leave blank to keep the encrypted Bot Token. A replacement is verified with Telegram before it is saved",
