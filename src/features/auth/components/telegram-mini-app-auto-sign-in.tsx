@@ -1,5 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import {
+	backButton,
 	init,
 	miniApp,
 	retrieveLaunchParams,
@@ -56,7 +57,7 @@ export function TelegramMiniAppAutoSignIn() {
 	return null;
 }
 
-function initializeTelegramMiniApp() {
+export function initializeTelegramMiniApp() {
 	telegramMiniAppRuntime ??= startTelegramMiniApp();
 	return telegramMiniAppRuntime;
 }
@@ -73,6 +74,7 @@ export async function startTelegramMiniApp() {
 		init();
 		if (miniApp.mount.isAvailable()) miniApp.mount();
 		if (miniApp.ready.isAvailable()) miniApp.ready();
+		if (backButton.mount.isAvailable()) backButton.mount();
 	} catch {
 		return initData;
 	}

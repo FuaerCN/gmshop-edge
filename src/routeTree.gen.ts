@@ -23,6 +23,7 @@ import { Route as AdminCouponsRouteImport } from './routes/admin/coupons'
 import { Route as AdminAutomationRouteImport } from './routes/admin/automation'
 import { Route as AdminAuthRouteImport } from './routes/admin/auth'
 import { Route as publicStatusRouteImport } from './routes/(public)/status'
+import { Route as publicMeRouteImport } from './routes/(public)/me'
 import { Route as publicCartRouteImport } from './routes/(public)/cart'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
@@ -168,6 +169,11 @@ const AdminAuthRoute = AdminAuthRouteImport.update({
 const publicStatusRoute = publicStatusRouteImport.update({
   id: '/status',
   path: '/status',
+  getParentRoute: () => publicRouteRoute,
+} as any)
+const publicMeRoute = publicMeRouteImport.update({
+  id: '/me',
+  path: '/me',
   getParentRoute: () => publicRouteRoute,
 } as any)
 const publicCartRoute = publicCartRouteImport.update({
@@ -601,6 +607,7 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/cart': typeof publicCartRoute
+  '/me': typeof publicMeRoute
   '/status': typeof publicStatusRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
@@ -684,6 +691,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/cart': typeof publicCartRoute
+  '/me': typeof publicMeRoute
   '/status': typeof publicStatusRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
@@ -777,6 +785,7 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/(public)/cart': typeof publicCartRoute
+  '/(public)/me': typeof publicMeRoute
   '/(public)/status': typeof publicStatusRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
@@ -870,6 +879,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/cart'
+    | '/me'
     | '/status'
     | '/admin/auth'
     | '/admin/automation'
@@ -953,6 +963,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/cart'
+    | '/me'
     | '/status'
     | '/admin/auth'
     | '/admin/automation'
@@ -1045,6 +1056,7 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/(public)/cart'
+    | '/(public)/me'
     | '/(public)/status'
     | '/admin/auth'
     | '/admin/automation'
@@ -1240,6 +1252,13 @@ declare module '@tanstack/react-router' {
       path: '/status'
       fullPath: '/status'
       preLoaderRoute: typeof publicStatusRouteImport
+      parentRoute: typeof publicRouteRoute
+    }
+    '/(public)/me': {
+      id: '/(public)/me'
+      path: '/me'
+      fullPath: '/me'
+      preLoaderRoute: typeof publicMeRouteImport
       parentRoute: typeof publicRouteRoute
     }
     '/(public)/cart': {
@@ -1834,6 +1853,7 @@ const publicAccountRouteRouteWithChildren =
 interface publicRouteRouteChildren {
   publicAccountRouteRoute: typeof publicAccountRouteRouteWithChildren
   publicCartRoute: typeof publicCartRoute
+  publicMeRoute: typeof publicMeRoute
   publicStatusRoute: typeof publicStatusRoute
   publicIndexRoute: typeof publicIndexRoute
   publicOrdersOrderNumberRoute: typeof publicOrdersOrderNumberRoute
@@ -1845,6 +1865,7 @@ interface publicRouteRouteChildren {
 const publicRouteRouteChildren: publicRouteRouteChildren = {
   publicAccountRouteRoute: publicAccountRouteRouteWithChildren,
   publicCartRoute: publicCartRoute,
+  publicMeRoute: publicMeRoute,
   publicStatusRoute: publicStatusRoute,
   publicIndexRoute: publicIndexRoute,
   publicOrdersOrderNumberRoute: publicOrdersOrderNumberRoute,

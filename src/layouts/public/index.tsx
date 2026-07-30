@@ -5,18 +5,20 @@ import { SiteCustomHtml } from "#/features/settings/components/site-custom-html"
 import { SkipToMain } from "#/layouts/components/skip-to-main";
 import { PublicFooter } from "#/layouts/public/footer";
 import { PublicHeader } from "#/layouts/public/header";
+import { MobileBottomNavigation } from "#/layouts/public/mobile-bottom-navigation";
 
 export function PublicLayout() {
 	const { customHtml } = useSiteBrand();
 	return (
 		<CurrencyProvider>
-			<div className="flex min-h-svh flex-col bg-background text-foreground">
+			<div className="flex min-h-svh flex-col bg-background pt-safe text-foreground lg:pt-0">
 				<SkipToMain />
 				<PublicHeader />
 				<main className="w-full flex-1" id="content" tabIndex={-1}>
 					<Outlet />
 				</main>
 				<PublicFooter />
+				<MobileBottomNavigation />
 				<SiteCustomHtml html={customHtml} />
 			</div>
 		</CurrencyProvider>

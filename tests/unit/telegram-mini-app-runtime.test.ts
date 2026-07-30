@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	bindCssVars: vi.fn(),
+	backButtonMount: vi.fn(),
 	expand: vi.fn(),
 	init: vi.fn(),
 	miniAppMount: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock("@tma.js/sdk", () => {
 		ready: true,
 		requestFullscreen: true,
 		bindCssVars: true,
+		backButtonMount: true,
 		viewportMount: true,
 	};
 	const available = <T extends ReturnType<typeof vi.fn>>(
@@ -26,6 +28,9 @@ vi.mock("@tma.js/sdk", () => {
 		key: keyof typeof availability,
 	) => Object.assign(fn, { isAvailable: () => availability[key] });
 	return {
+		backButton: {
+			mount: available(mocks.backButtonMount, "backButtonMount"),
+		},
 		init: mocks.init,
 		retrieveLaunchParams: mocks.retrieveLaunchParams,
 		retrieveRawInitData: mocks.retrieveRawInitData,

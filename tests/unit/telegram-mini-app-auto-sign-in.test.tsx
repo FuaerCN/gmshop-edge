@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	bindCssVars: vi.fn(),
+	backButtonMount: vi.fn(),
 	expand: vi.fn(),
 	init: vi.fn(),
 	invalidate: vi.fn(),
@@ -25,6 +26,9 @@ vi.mock("@tma.js/sdk", () => {
 	const available = <T extends ReturnType<typeof vi.fn>>(fn: T) =>
 		Object.assign(fn, { isAvailable: () => true });
 	return {
+		backButton: {
+			mount: available(mocks.backButtonMount),
+		},
 		init: mocks.init,
 		retrieveLaunchParams: mocks.retrieveLaunchParams,
 		retrieveRawInitData: mocks.retrieveRawInitData,
@@ -119,6 +123,7 @@ describe("Telegram Mini App auto sign-in", () => {
 		expect(mocks.init).toHaveBeenCalledOnce();
 		expect(mocks.miniAppMount).toHaveBeenCalledOnce();
 		expect(mocks.ready).toHaveBeenCalledOnce();
+		expect(mocks.backButtonMount).toHaveBeenCalledOnce();
 		expect(mocks.viewportMount).toHaveBeenCalledOnce();
 		expect(mocks.bindCssVars).toHaveBeenCalledOnce();
 		expect(mocks.expand).toHaveBeenCalledOnce();

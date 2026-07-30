@@ -6,12 +6,14 @@ import {
 	useRouterState,
 } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef } from "react";
+import { StartupSplash } from "#/components/startup-splash";
 import { Toaster } from "#/components/ui/sonner";
 import { TooltipProvider } from "#/components/ui/tooltip";
 import { DirectionProvider } from "#/context/direction-provider";
 import { SiteBrandProvider } from "#/context/site-brand-provider";
 import { ThemeProvider } from "#/context/theme-provider";
 import { TelegramMiniAppAutoSignIn } from "#/features/auth/components/telegram-mini-app-auto-sign-in";
+import { TelegramMiniAppBackButton } from "#/features/auth/components/telegram-mini-app-back-button";
 import { GeneralError } from "#/features/errors/general-error";
 import { NotFoundError } from "#/features/errors/not-found-error";
 import { getSiteBrandFn } from "#/features/settings/server/site-brand-entry";
@@ -129,7 +131,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			<body className="antialiased wrap-anywhere">
 				<RouteFocusManager />
 				<TelegramMiniAppAutoSignIn />
+				<TelegramMiniAppBackButton />
 				<SiteBrandProvider brand={brand}>
+					<StartupSplash />
 					<ThemeProvider>
 						<DirectionProvider>
 							<TooltipProvider>{children}</TooltipProvider>
