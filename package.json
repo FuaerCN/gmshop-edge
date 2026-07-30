@@ -75,6 +75,7 @@
     "@tanstack/react-store": "latest",
     "@tanstack/react-table": "latest",
     "@tanstack/store": "latest",
+    "@tma.js/sdk": "^3.3.0",
     "@visulima/email": "^2.1.7",
     "better-auth": "^1.5.3",
     "better-auth-telegram": "1.5.0",

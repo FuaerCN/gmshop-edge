@@ -118,8 +118,11 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 		const initData = await signedTelegramInitData(
 			botToken,
 			Math.floor(Date.now() / 1_000),
+			{
+				user: telegramUser("https://cdn.example/telegram-avatar.jpg"),
+			},
 		);
-		const request = () =>
+		const request = (data = initData) =>
 			new Request("https://shop.example/api/auth/telegram/miniapp/signin", {
 				method: "POST",
 				headers: {
@@ -127,7 +130,7 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 					origin: "https://shop.example",
 					"cf-connecting-ip": "203.0.113.10",
 				},
-				body: JSON.stringify({ initData }),
+				body: JSON.stringify({ initData: data }),
 			});
 		const response = await auth.handler(request());
 		expect(response.status).toBe(200);
@@ -138,7 +141,8 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 			.prepare(`SELECT
 			 (SELECT COUNT(*) FROM users) AS users,
 			 (SELECT COUNT(*) FROM accounts WHERE provider_id = 'telegram') AS accounts,
-			 (SELECT preferred_locale FROM users WHERE email LIKE 'telegram-%@identity.gmshop.invalid' LIMIT 1) AS telegram_locale,
+			 (SELECT preferred_locale FROM users WHERE email LIKE '%@telegram.invalid' LIMIT 1) AS telegram_locale,
+			 (SELECT image FROM users WHERE email LIKE '%@telegram.invalid' LIMIT 1) AS telegram_image,
 			 (SELECT COUNT(*) FROM verifications WHERE identifier LIKE 'telegram-mini-app:%') AS receipts,
 			 (SELECT COUNT(*) FROM audit_logs WHERE action = 'auth.telegram_mini_app_signed_in') AS audits`)
 			.first<Record<string, unknown>>();
@@ -146,6 +150,7 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 			users: 2,
 			accounts: 1,
 			telegram_locale: "zh-CN",
+			telegram_image: "https://cdn.example/telegram-avatar.jpg",
 			receipts: 1,
 			audits: 1,
 		});
@@ -155,6 +160,63 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 		const replayBody = await replay.text();
 		expect(replayBody).not.toContain(botToken);
 		expect(replayBody).not.toContain(initData);
+	});
+
+	it("fills a missing trusted avatar without replacing a custom avatar", async () => {
+		await database
+			.prepare(
+				`UPDATE users SET image = NULL
+				 WHERE email = '900719925474000@telegram.invalid'`,
+			)
+			.run();
+		const first = await signedTelegramInitData(
+			botToken,
+			Math.floor(Date.now() / 1_000),
+			{
+				query_id: "AAEAA-avatar-backfill",
+				user: telegramUser("https://cdn.example/avatar-backfill.jpg"),
+			},
+		);
+		expect(await signInMiniApp(auth, first)).toBe(200);
+		expect(await telegramImage(database)).toBe(
+			"https://cdn.example/avatar-backfill.jpg",
+		);
+
+		await database
+			.prepare(
+				`UPDATE users SET image = 'https://shop.example/custom-avatar.jpg'
+				 WHERE email = '900719925474000@telegram.invalid'`,
+			)
+			.run();
+		const second = await signedTelegramInitData(
+			botToken,
+			Math.floor(Date.now() / 1_000),
+			{
+				query_id: "AAEAA-avatar-preserve",
+				user: telegramUser("https://cdn.example/avatar-replacement.jpg"),
+			},
+		);
+		expect(await signInMiniApp(auth, second)).toBe(200);
+		expect(await telegramImage(database)).toBe(
+			"https://shop.example/custom-avatar.jpg",
+		);
+
+		await database
+			.prepare(
+				`UPDATE users SET image = NULL
+				 WHERE email = '900719925474000@telegram.invalid'`,
+			)
+			.run();
+		const invalid = await signedTelegramInitData(
+			botToken,
+			Math.floor(Date.now() / 1_000),
+			{
+				query_id: "AAEAA-avatar-invalid",
+				user: telegramUser("http://cdn.example/insecure-avatar.jpg"),
+			},
+		);
+		expect(await signInMiniApp(auth, invalid)).toBe(200);
+		expect(await telegramImage(database)).toBeNull();
 	});
 
 	it("rejects untrusted origins, disabled users and disabled providers", async () => {
@@ -179,7 +241,7 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 		await database
 			.prepare(
 				`UPDATE users SET enabled = 0 WHERE email =
-				 'telegram-900719925474000@identity.gmshop.invalid'`,
+				 '900719925474000@telegram.invalid'`,
 			)
 			.run();
 		const disabledData = await signedTelegramInitData(botToken, authDate, {
@@ -219,3 +281,43 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 		expect(unavailable.status).toBe(404);
 	});
 });
+
+function telegramUser(photoUrl: string) {
+	return JSON.stringify({
+		id: 900_719_925_474_000,
+		first_name: "Mini",
+		last_name: "User",
+		username: "mini_user",
+		language_code: "zh-CN",
+		photo_url: photoUrl,
+	});
+}
+
+async function signInMiniApp(
+	auth: ReturnType<typeof createAuth>,
+	initData: string,
+) {
+	const response = await auth.handler(
+		new Request("https://shop.example/api/auth/telegram/miniapp/signin", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: "https://shop.example",
+				"cf-connecting-ip": "203.0.113.11",
+			},
+			body: JSON.stringify({ initData }),
+		}),
+	);
+	return response.status;
+}
+
+async function telegramImage(database: D1Database) {
+	return (
+		await database
+			.prepare(
+				`SELECT image FROM users
+				 WHERE email = '900719925474000@telegram.invalid'`,
+			)
+			.first<{ image: string | null }>()
+	)?.image;
+}

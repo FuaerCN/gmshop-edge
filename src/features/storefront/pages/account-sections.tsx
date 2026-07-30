@@ -33,6 +33,7 @@ import {
 } from "#/components/ui/dialog";
 import { Skeleton } from "#/components/ui/skeleton";
 import { authClient } from "#/features/auth/auth-client";
+import { listPublicAuthProvidersFn } from "#/features/auth/server/provider-admin";
 import { entitlementStatusLabel } from "#/features/entitlements/labels";
 import { shopOrderStatusLabel } from "#/features/shop-orders/labels";
 import { AutomationEntitlementCard } from "#/features/storefront/components/build-entitlement";
@@ -638,6 +639,7 @@ export function AccountSettingsPage({ account }: { account: Account }) {
 						submitter={false}
 					/>
 				</section>
+				<AccountEmailSettings account={account} />
 				<section className="grid content-start gap-5 rounded-3xl border bg-card p-5 sm:p-6">
 					<div className="flex items-start justify-between gap-4">
 						<div>
@@ -676,6 +678,112 @@ export function AccountSettingsPage({ account }: { account: Account }) {
 				</section>
 			</div>
 		</>
+	);
+}
+
+function AccountEmailSettings({ account }: { account: Account }) {
+	const providers = useQuery({
+		queryKey: ["public", "auth-providers"],
+		queryFn: () => listPublicAuthProvidersFn(),
+		staleTime: 30_000,
+	});
+	const emailDeliveryEnabled =
+		providers.data?.some((provider) => provider.emailDeliveryEnabled) === true;
+	const changeEmail = useMutation({
+		mutationFn: async (newEmail: string) => {
+			const result = await authClient.changeEmail({
+				newEmail,
+				callbackURL: "/account/settings",
+			});
+			if (result.error) throw result.error;
+			return result.data;
+		},
+		onSuccess: () =>
+			toast.success(
+				account.user.emailVerified
+					? m.store_account_email_change_sent()
+					: m.store_account_email_bind_sent(),
+			),
+		onError: () => toast.error(m.store_account_email_change_failed()),
+	});
+	const formId = "account-email-form";
+	return (
+		<section className="grid content-start gap-5 rounded-3xl border bg-card p-5 sm:p-6">
+			<div className="flex items-start justify-between gap-4">
+				<div>
+					<h2 className="font-semibold text-xl">{m.store_account_email()}</h2>
+					<p className="mt-1 text-muted-foreground text-sm">
+						{m.store_account_email_description()}
+					</p>
+				</div>
+				<Button
+					disabled={
+						providers.isPending ||
+						!emailDeliveryEnabled ||
+						changeEmail.isPending
+					}
+					form={formId}
+					size="sm"
+					type="submit"
+				>
+					{account.user.email
+						? m.store_account_email_change()
+						: m.store_account_email_bind()}
+				</Button>
+			</div>
+			{account.user.email ? (
+				<div className="rounded-xl border bg-muted/20 p-3">
+					<div className="flex items-center gap-2">
+						<span className="font-medium text-sm">
+							{m.store_account_email_bound()}
+						</span>
+						<Badge variant="secondary">
+							{account.user.emailVerified
+								? m.store_account_email_verified()
+								: m.store_account_email_pending()}
+						</Badge>
+					</div>
+					<p className="mt-1 text-muted-foreground text-sm">
+						{account.user.email}
+					</p>
+				</div>
+			) : (
+				<p className="text-muted-foreground text-sm">
+					{m.store_account_email_unbound()}
+				</p>
+			)}
+			{!providers.isPending && !emailDeliveryEnabled ? (
+				<p className="text-muted-foreground text-sm">
+					{m.store_account_email_delivery_unavailable()}
+				</p>
+			) : (
+				<ProSchemaForm
+					className="grid gap-3"
+					id={formId}
+					initialValues={{ email: "" }}
+					onFinish={async (values) => {
+						await changeEmail.mutateAsync(
+							String(values.email ?? "")
+								.trim()
+								.toLowerCase(),
+						);
+					}}
+					schema={[
+						{
+							name: "email",
+							label: m.store_account_email_new(),
+							required: true,
+							fieldProps: {
+								autoComplete: "email",
+								maxLength: 320,
+								type: "email",
+							},
+						},
+					]}
+					submitter={false}
+				/>
+			)}
+		</section>
 	);
 }
 

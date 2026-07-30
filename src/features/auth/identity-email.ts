@@ -1,9 +1,14 @@
-const internalIdentityDomain = "@identity.gmshop.invalid";
+const telegramIdentityDomain = "@telegram.invalid";
+const legacyInternalIdentityDomain = "@identity.gmshop.invalid";
 
 export function isInternalIdentityEmail(email: string | null | undefined) {
-	return email?.trim().toLowerCase().endsWith(internalIdentityDomain) === true;
+	const normalized = email?.trim().toLowerCase();
+	return (
+		normalized?.endsWith(telegramIdentityDomain) === true ||
+		normalized?.endsWith(legacyInternalIdentityDomain) === true
+	);
 }
 
 export function telegramIdentityEmail(telegramUserId: string) {
-	return `telegram-${telegramUserId}${internalIdentityDomain}`;
+	return `${telegramUserId}${telegramIdentityDomain}`;
 }

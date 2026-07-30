@@ -41,7 +41,9 @@ GMShop Edge 是面向 Cloudflare Workers 的自托管、单部署、单租户数
 - 由商城在 D1 维护法币汇率，将同一份不可变报价交给 Stripe、GMpay、EPay 或其他
   类型化适配器。
 - 通过 Better Auth 在运行时配置邮箱密码、社交、OIDC 和 Telegram 认证 Provider，
-  无需重新构建 Worker。
+  无需重新构建 Worker。Telegram Mini App 使用验签后的 `initData` 自动注册或登录，
+  通过 `@tma.js/sdk` 请求全屏并补齐缺失头像；Telegram 用户可独立绑定已验证邮箱，
+  是否设置密码由用户另行决定。
 - 使用动态多角色 RBAC、不可移除的 root 约束、服务端权限校验、再认证和审计保护
   `/admin`。
 - 提供响应式深浅主题、键盘访问，以及英文（`en-US`）和简体中文（`zh-CN`）两种

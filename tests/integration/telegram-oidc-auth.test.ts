@@ -27,6 +27,7 @@ describe("Telegram OIDC Better Auth login", { timeout: 30_000 }, () => {
 	const clientId = "123456789";
 	const clientSecret = "telegram-oidc-client-secret";
 	let telegramUserId = "987654321";
+	let telegramPicture = "https://cdn.example/telegram-oidc-avatar.jpg";
 
 	beforeAll(async () => {
 		const keys = await generateKeyPair("RS256");
@@ -48,6 +49,7 @@ describe("Telegram OIDC Better Auth login", { timeout: 30_000 }, () => {
 					const idToken = await new SignJWT({
 						nonce: tokenNonce,
 						name: "Telegram Shopper",
+						picture: telegramPicture,
 						preferred_username: "shopper",
 					})
 						.setProtectedHeader({ alg: "RS256", kid: "telegram-test" })
@@ -170,20 +172,64 @@ describe("Telegram OIDC Better Auth login", { timeout: 30_000 }, () => {
 			.prepare(`SELECT
 			 (SELECT COUNT(*) FROM users WHERE email = ?) AS users,
 			 (SELECT COUNT(*) FROM accounts WHERE provider_id = 'telegram' AND account_id = ?) AS accounts,
+			 (SELECT image FROM users WHERE email = ?) AS image,
 			 (SELECT COUNT(*) FROM audit_logs WHERE action = 'auth.telegram_oidc_signed_in') AS audits`)
 			.bind(
-				`telegram-${telegramUserId}@identity.gmshop.invalid`,
+				`${telegramUserId}@telegram.invalid`,
 				telegramUserId,
+				`${telegramUserId}@telegram.invalid`,
 			)
-			.first<Record<string, number>>();
+			.first<Record<string, number | string>>();
 		expect(state).toEqual({
 			users: 1,
 			accounts: 1,
+			image: telegramPicture,
 			audits: 1,
 		});
 		const replay = await callbackOidc(auth, started.state, started.cookie);
 		expect(replay.status).toBe(302);
 		expect(replay.headers.get("location")).toContain("error=");
+	});
+
+	it("backfills only a missing OIDC avatar and rejects insecure URLs", async () => {
+		const telegramEmail = `${telegramUserId}@telegram.invalid`;
+		await database
+			.prepare("UPDATE users SET image = NULL WHERE email = ?")
+			.bind(telegramEmail)
+			.run();
+		telegramPicture = "https://cdn.example/telegram-oidc-backfill.jpg";
+		let started = await startOidc(auth);
+		tokenNonce = started.url.searchParams.get("nonce") ?? "";
+		expect(
+			(await callbackOidc(auth, started.state, started.cookie)).status,
+		).toBe(302);
+		expect(await oidcUserImage(database, telegramEmail)).toBe(telegramPicture);
+
+		await database
+			.prepare("UPDATE users SET image = ? WHERE email = ?")
+			.bind("https://shop.example/custom-avatar.jpg", telegramEmail)
+			.run();
+		telegramPicture = "https://cdn.example/telegram-oidc-replacement.jpg";
+		started = await startOidc(auth);
+		tokenNonce = started.url.searchParams.get("nonce") ?? "";
+		expect(
+			(await callbackOidc(auth, started.state, started.cookie)).status,
+		).toBe(302);
+		expect(await oidcUserImage(database, telegramEmail)).toBe(
+			"https://shop.example/custom-avatar.jpg",
+		);
+
+		await database
+			.prepare("UPDATE users SET image = NULL WHERE email = ?")
+			.bind(telegramEmail)
+			.run();
+		telegramPicture = "http://cdn.example/insecure-avatar.jpg";
+		started = await startOidc(auth);
+		tokenNonce = started.url.searchParams.get("nonce") ?? "";
+		expect(
+			(await callbackOidc(auth, started.state, started.cookie)).status,
+		).toBe(302);
+		expect(await oidcUserImage(database, telegramEmail)).toBeNull();
 	});
 
 	it("rejects a correctly signed token carrying the wrong nonce", async () => {
@@ -197,6 +243,7 @@ describe("Telegram OIDC Better Auth login", { timeout: 30_000 }, () => {
 
 	it("links a new Telegram identity only from an authenticated session", async () => {
 		telegramUserId = "555555555";
+		telegramPicture = "https://cdn.example/linked-telegram-avatar.jpg";
 		const signedIn = await auth.api.signInEmail({
 			body: {
 				email: "root@example.com",
@@ -298,6 +345,15 @@ function callbackOidc(
 	url.searchParams.set("code", "authorization-code");
 	url.searchParams.set("state", state);
 	return auth.handler(new Request(url, { headers: { cookie } }));
+}
+
+async function oidcUserImage(database: D1Database, email: string) {
+	return (
+		await database
+			.prepare("SELECT image FROM users WHERE email = ?")
+			.bind(email)
+			.first<{ image: string | null }>()
+	)?.image;
 }
 
 function responseCookie(response: Response) {

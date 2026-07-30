@@ -51,7 +51,10 @@ administration console.
 - Quote customer-selected fiat currencies from store-owned D1 exchange rates and
   pass one immutable quote to Stripe, GMpay, EPay, or another typed adapter.
 - Configure email/password, social, OIDC, and Telegram authentication providers
-  at runtime through Better Auth without rebuilding the Worker.
+  at runtime through Better Auth without rebuilding the Worker. Telegram Mini
+  Apps use verified `initData` for automatic sign-up/sign-in, request full
+  screen through `@tma.js/sdk`, and import a missing Telegram avatar. Telegram
+  users can bind a verified email independently from setting a password.
 - Protect `/admin` with dynamic multi-role RBAC, a non-removable root invariant,
   server-side permission checks, reauthentication, and audit records.
 - Provide responsive light and dark themes, keyboard access, and two UI locales:

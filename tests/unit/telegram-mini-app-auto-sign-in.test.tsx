@@ -7,11 +7,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelegramMiniAppAutoSignIn } from "#/features/auth/components/telegram-mini-app-auto-sign-in";
 
 const mocks = vi.hoisted(() => ({
+	expand: vi.fn(),
+	init: vi.fn(),
 	invalidate: vi.fn(),
-	listProviders: vi.fn(),
+	miniAppMount: vi.fn(),
+	ready: vi.fn(),
 	refetch: vi.fn(),
+	requestFullscreen: vi.fn(),
+	retrieveRawInitData: vi.fn(),
 	signInWithMiniApp: vi.fn(),
+	viewportMount: vi.fn(),
 }));
+
+vi.mock("@tma.js/sdk", () => {
+	const available = <T extends ReturnType<typeof vi.fn>>(fn: T) =>
+		Object.assign(fn, { isAvailable: () => true });
+	return {
+		init: mocks.init,
+		retrieveRawInitData: mocks.retrieveRawInitData,
+		miniApp: {
+			mount: available(mocks.miniAppMount),
+			ready: available(mocks.ready),
+		},
+		viewport: {
+			expand: available(mocks.expand),
+			mount: available(mocks.viewportMount),
+			requestFullscreen: available(mocks.requestFullscreen),
+		},
+	};
+});
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate: mocks.invalidate }),
@@ -28,10 +52,6 @@ vi.mock("#/features/auth/auth-client", () => ({
 	},
 }));
 
-vi.mock("#/features/auth/server/provider-admin", () => ({
-	listPublicAuthProvidersFn: mocks.listProviders,
-}));
-
 describe("Telegram Mini App auto sign-in", () => {
 	let container: HTMLDivElement;
 
@@ -44,26 +64,16 @@ describe("Telegram Mini App auto sign-in", () => {
 		mocks.signInWithMiniApp.mockResolvedValue({ data: {}, error: null });
 		mocks.refetch.mockResolvedValue(undefined);
 		mocks.invalidate.mockResolvedValue(undefined);
-		mocks.listProviders.mockResolvedValue([
-			{
-				providerId: "telegram",
-				telegramMiniAppEnabled: true,
-			},
-		]);
-		Object.assign(window, {
-			Telegram: {
-				WebApp: {
-					initData: "query_id=unique-mini-app-launch",
-					ready: vi.fn(),
-				},
-			},
-		});
+		mocks.retrieveRawInitData.mockReturnValue(
+			"query_id=unique-mini-app-launch",
+		);
+		mocks.viewportMount.mockResolvedValue(undefined);
+		mocks.requestFullscreen.mockResolvedValue(undefined);
 	});
 
 	afterEach(() => {
 		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
-		delete (window as typeof window & { Telegram?: unknown }).Telegram;
 		container.remove();
 		vi.clearAllMocks();
 	});
@@ -93,6 +103,12 @@ describe("Telegram Mini App auto sign-in", () => {
 		);
 		expect(mocks.refetch).toHaveBeenCalledOnce();
 		expect(mocks.invalidate).toHaveBeenCalledOnce();
+		expect(mocks.init).toHaveBeenCalledOnce();
+		expect(mocks.miniAppMount).toHaveBeenCalledOnce();
+		expect(mocks.ready).toHaveBeenCalledOnce();
+		expect(mocks.viewportMount).toHaveBeenCalledOnce();
+		expect(mocks.requestFullscreen).toHaveBeenCalledOnce();
+		expect(mocks.expand).not.toHaveBeenCalled();
 
 		await act(async () => root.unmount());
 	});

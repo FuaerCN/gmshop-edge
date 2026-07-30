@@ -22,6 +22,7 @@ import {
 } from "#/features/auth/server/telegram-mini-app";
 import { enqueueConfiguredEmailNotification } from "#/features/notifications/server/delivery";
 import { DomainError } from "#/lib/domain-error";
+import { m } from "#/paraglide/messages";
 import type { AppDb } from "#/server/db.server";
 
 export type AuthEnv = {
@@ -126,6 +127,38 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 		},
 		socialProviders: createSocialProviders(authProviders),
 		user: {
+			changeEmail: {
+				enabled: emailDeliveryEnabled,
+				updateEmailWithoutVerification: false,
+				...(emailDeliveryEnabled
+					? {
+							sendChangeEmailConfirmation: async ({
+								user,
+								newEmail,
+								url,
+								token,
+							}) => {
+								const locale = supportedEmailLocale(
+									(user as { preferredLocale?: unknown }).preferredLocale,
+								);
+								await enqueueConfiguredEmailNotification(db.$client, {
+									event: "auth.email_verification",
+									idempotencyKey: `auth-email-change-confirmation:${user.id}:${await tokenDigest(token)}`,
+									to: user.email,
+									locale,
+									subject: m.auth_email_change_confirmation_subject(
+										{ siteName },
+										{ locale },
+									),
+									text: m.auth_email_change_confirmation_text(
+										{ newEmail, url },
+										{ locale },
+									),
+								});
+							},
+						}
+					: {}),
+			},
 			additionalFields: {
 				enabled: {
 					type: "boolean",
@@ -157,22 +190,16 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 						const locale = supportedEmailLocale(
 							(user as { preferredLocale?: unknown }).preferredLocale,
 						);
-						const content =
-							locale === "zh-CN"
-								? {
-										subject: `验证您的 ${siteName} 邮箱`,
-										text: `请使用以下链接验证您的邮箱：\n\n${url}\n\n如果并非您本人注册，请忽略此邮件。`,
-									}
-								: {
-										subject: `Verify your ${siteName} email`,
-										text: `Use this link to verify your email:\n\n${url}\n\nIf you did not create this account, ignore this email.`,
-									};
 						await enqueueConfiguredEmailNotification(db.$client, {
 							event: "auth.email_verification",
 							idempotencyKey: `auth-email-verification:${user.id}:${await tokenDigest(token)}`,
 							to: user.email,
 							locale,
-							...content,
+							subject: m.auth_email_verification_subject(
+								{ siteName },
+								{ locale },
+							),
+							text: m.auth_email_verification_text({ url }, { locale }),
 						});
 					},
 				}
@@ -187,6 +214,7 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 				"/email-otp/request-password-reset": { window: 60, max: 3 },
 				"/email-otp/reset-password": { window: 60, max: 5 },
 				"/send-verification-email": { window: 60, max: 3 },
+				"/change-email": { window: 60, max: 3 },
 			},
 		},
 		hooks: {
@@ -229,6 +257,12 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 					await auditAuthenticationFailure(db.$client, ctx.path, ctx.headers);
 					return;
 				}
+				if (ctx.path === "/telegram/miniapp/signin")
+					await backfillTelegramMiniAppImage(
+						ctx,
+						telegramOidcProvider,
+						db.$client,
+					);
 				const action = securityAuditAction(ctx.path);
 				if (!action) return;
 				const userId =
@@ -280,22 +314,16 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 										message: "This email OTP flow is unavailable",
 									});
 								const locale = await loadUserEmailLocale(db.$client, email);
-								const content =
-									locale === "zh-CN"
-										? {
-												subject: `重置您的 ${siteName} 密码`,
-												text: `您的密码重置验证码是 ${otp}。\n\n验证码将在 10 分钟后失效。如果并非您本人操作，请忽略此邮件。`,
-											}
-										: {
-												subject: `Reset your ${siteName} password`,
-												text: `Your password reset code is ${otp}.\n\nIt expires in 10 minutes. If you did not request this, ignore this email.`,
-											};
 								await enqueueConfiguredEmailNotification(db.$client, {
 									event: "auth.password_reset",
 									idempotencyKey: `auth-password-reset:${await tokenDigest(`${email}:${otp}`)}`,
 									to: email,
 									locale,
-									...content,
+									subject: m.auth_email_password_reset_subject(
+										{ siteName },
+										{ locale },
+									),
+									text: m.auth_email_password_reset_text({ otp }, { locale }),
 								});
 							},
 						}),
@@ -323,6 +351,7 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 										user.username ||
 										`Telegram ${user.id}`,
 									email: telegramIdentityEmail(String(user.id)),
+									image: telegramProfileImage(user.photo_url),
 									preferredLocale: telegramPreferredLocale(user.language_code),
 								}),
 							},
@@ -385,6 +414,37 @@ async function reserveTelegramMiniAppReplay(
 		});
 }
 
+async function backfillTelegramMiniAppImage(
+	ctx: GenericEndpointContext,
+	provider: RuntimeAuthProvider | undefined,
+	database: D1Database,
+) {
+	const initData = (ctx.body as { initData?: unknown } | undefined)?.initData;
+	if (typeof initData !== "string" || !provider?.telegramBotToken) return;
+	try {
+		const identity = await verifyTelegramMiniAppInitData(
+			initData,
+			provider.telegramBotToken,
+			{ maxAgeMs: 300_000 },
+		);
+		const image = telegramProfileImage(identity.photoUrl);
+		if (!image) return;
+		const userId =
+			securityAuditUserId(ctx.context) ??
+			(await getSessionFromCtx(ctx).catch(() => null))?.user.id;
+		if (!userId) return;
+		await database
+			.prepare(
+				`UPDATE users SET image = ?, updated_at = ?
+				 WHERE id = ? AND image IS NULL`,
+			)
+			.bind(image, Date.now(), userId)
+			.run();
+	} catch (error) {
+		if (!(error instanceof TelegramMiniAppAuthError)) throw error;
+	}
+}
+
 function telegramOidcBetterAuthPlugin(
 	provider: RuntimeAuthProvider,
 	database: D1Database,
@@ -396,6 +456,7 @@ function telegramOidcBetterAuthPlugin(
 		scopes: provider.scopes,
 		mapOIDCProfileToUser: (claims) => ({
 			email: telegramIdentityEmail(claims.sub),
+			image: telegramProfileImage(claims.picture),
 		}),
 	});
 	const telegramProvider = {
@@ -433,19 +494,35 @@ function telegramOidcBetterAuthPlugin(
 			});
 			if (verified.payload.nonce !== (await oidcNonce(input.codeVerifier)))
 				throw new Error("Telegram OIDC nonce is invalid");
-			await database
-				.prepare(
-					`INSERT INTO audit_logs
+			const image = telegramProfileImage(verified.payload.picture);
+			await database.batch([
+				...(image
+					? [
+							database
+								.prepare(
+									`UPDATE users SET image = ?, updated_at = ?
+									 WHERE image IS NULL AND id = (
+									  SELECT user_id FROM accounts
+									  WHERE provider_id = 'telegram' AND account_id = ?
+									  LIMIT 1
+									 )`,
+								)
+								.bind(image, Date.now(), verified.payload.sub),
+						]
+					: []),
+				database
+					.prepare(
+						`INSERT INTO audit_logs
 					 (id, action, target_type, target_id, after, created_at)
 					 VALUES (?, 'auth.telegram_oidc_signed_in', 'auth', ?, ?, ?)`,
-				)
-				.bind(
-					crypto.randomUUID(),
-					`telegram:${verified.payload.sub}`,
-					JSON.stringify({ providerId: "telegram" }),
-					Date.now(),
-				)
-				.run();
+					)
+					.bind(
+						crypto.randomUUID(),
+						`telegram:${verified.payload.sub}`,
+						JSON.stringify({ providerId: "telegram" }),
+						Date.now(),
+					),
+			]);
 			return tokens;
 		},
 	};
@@ -562,6 +639,7 @@ function securityAuditAction(path: string) {
 			"/sign-out": "auth.signed_out",
 			"/change-password": "auth.password_changed",
 			"/set-password": "auth.password_set",
+			"/change-email": "auth.email_change_requested",
 			"/email-otp/reset-password": "auth.password_reset",
 			"/verify-email": "auth.email_verified",
 			"/send-verification-email": "auth.verification_requested",
@@ -600,6 +678,7 @@ function authenticationFailureAction(path: string) {
 	return (
 		{
 			"/sign-in/email": "auth.sign_in_failed",
+			"/change-email": "auth.email_change_failed",
 			"/telegram/miniapp/signin": "auth.telegram_mini_app_failed",
 		}[path] ?? null
 	);
@@ -640,6 +719,15 @@ function telegramPreferredLocale(value: unknown): "en-US" | "zh-CN" {
 	return typeof value === "string" && value.toLowerCase().startsWith("zh")
 		? "zh-CN"
 		: "en-US";
+}
+
+function telegramProfileImage(value: unknown) {
+	if (typeof value !== "string" || value.length > 2_048) return undefined;
+	try {
+		return new URL(value).protocol === "https:" ? value : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 async function loadUserEmailLocale(db: D1Database, email: string) {

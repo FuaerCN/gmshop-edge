@@ -78,6 +78,7 @@ describe("authentication provider configuration", () => {
 	});
 
 	it("recognizes only the reserved non-deliverable identity domain", () => {
+		expect(isInternalIdentityEmail("42@telegram.invalid")).toBe(true);
 		expect(isInternalIdentityEmail("telegram-42@identity.gmshop.invalid")).toBe(
 			true,
 		);

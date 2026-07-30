@@ -9,6 +9,8 @@ import {
 } from "#/features/notifications/secrets";
 import { applyMigrations } from "./migrations";
 
+let authEmailRequestAddress = 10;
+
 describe("authentication email flow", { timeout: 30_000 }, () => {
 	let miniflare: Miniflare;
 	let database: D1Database;
@@ -27,31 +29,7 @@ describe("authentication email flow", { timeout: 30_000 }, () => {
 	afterEach(async () => miniflare.dispose());
 
 	it("queues encrypted verification and reset messages without exposing tokens", async () => {
-		const auth = createAuth(drizzle(database, { schema }), {
-			BETTER_AUTH_SECRET: "better-auth-test-secret-at-least-32-characters",
-			BETTER_AUTH_URL: "https://shop.example",
-			TRUSTED_ORIGINS: ["https://shop.example"],
-			EMAIL_DELIVERY_ENABLED: true,
-			REQUIRE_EMAIL_VERIFICATION: true,
-			SITE_NAME: "Test Shop",
-			AUTH_PROVIDERS: [
-				{
-					id: "credential-provider",
-					providerId: "credential",
-					providerType: "email_password",
-					displayName: "Email",
-					clientId: null,
-					clientSecret: null,
-					scopes: [],
-					allowSignup: true,
-					revision: 1,
-					telegramBotUserId: null,
-					telegramBotUsername: null,
-					telegramBotToken: null,
-					telegramMiniAppEnabled: false,
-				},
-			],
-		});
+		const auth = createEmailAuth(database);
 		const signup = await auth.handler(
 			jsonRequest("/api/auth/sign-up/email", {
 				name: "Buyer",
@@ -136,17 +114,321 @@ describe("authentication email flow", { timeout: 30_000 }, () => {
 		);
 		expect(signIn.status).toBe(200);
 	});
+
+	it("binds an unverified identity email only after new-email verification", async () => {
+		const auth = createEmailAuth(database);
+		await signUp(auth, "temporary@example.com");
+		await database
+			.prepare(
+				`UPDATE users SET email = '42@telegram.invalid',
+				 email_verified = 1 WHERE email = 'temporary@example.com'`,
+			)
+			.run();
+		await clearDeliveries(database);
+		const signedIn = await auth.handler(
+			jsonRequest("/api/auth/sign-in/email", {
+				email: "42@telegram.invalid",
+				password: "very-secure-password",
+			}),
+		);
+		const cookie = responseCookie(signedIn);
+		await database
+			.prepare(
+				`UPDATE users SET email_verified = 0
+				 WHERE email = '42@telegram.invalid'`,
+			)
+			.run();
+
+		const requested = await auth.handler(
+			jsonRequest(
+				"/api/auth/change-email",
+				{
+					newEmail: "bound@example.com",
+					callbackURL: "/account/settings",
+				},
+				cookie,
+			),
+		);
+		expect(requested.status).toBe(200);
+		expect(await userEmail(database, "42@telegram.invalid")).toEqual({
+			email: "42@telegram.invalid",
+			email_verified: 0,
+		});
+
+		const verification = await latestEmail(database);
+		expect(verification.to).toBe("bound@example.com");
+		expect(verification.subject).toContain("Verify your Test Shop email");
+		const verified = await auth.handler(
+			new Request(emailUrl(verification.text), { headers: { cookie } }),
+		);
+		expect(verified.status).toBe(302);
+		expect(verified.headers.get("location")).toContain("/account/settings");
+		expect(await userEmail(database, "bound@example.com")).toEqual({
+			email: "bound@example.com",
+			email_verified: 1,
+		});
+	});
+
+	it("confirms a verified email change with the old address before the new one", async () => {
+		const auth = createEmailAuth(database);
+		const signup = await signUp(auth, "current@example.com");
+		const initialVerification = await latestEmail(database);
+		await auth.handler(
+			new Request(emailUrl(initialVerification.text), {
+				headers: { cookie: responseCookie(signup) },
+			}),
+		);
+		await clearDeliveries(database);
+		const signedIn = await auth.handler(
+			jsonRequest("/api/auth/sign-in/email", {
+				email: "current@example.com",
+				password: "very-secure-password",
+			}),
+		);
+		const cookie = responseCookie(signedIn);
+
+		const requested = await auth.handler(
+			jsonRequest(
+				"/api/auth/change-email",
+				{
+					newEmail: "changed@example.com",
+					callbackURL: "/account/settings",
+				},
+				cookie,
+			),
+		);
+		expect(requested.status).toBe(200);
+		const confirmation = await latestEmail(database);
+		expect(confirmation.to).toBe("current@example.com");
+		expect(confirmation.subject).toContain(
+			"Confirm your Test Shop email change",
+		);
+		expect(await userEmail(database, "current@example.com")).toMatchObject({
+			email: "current@example.com",
+			email_verified: 1,
+		});
+
+		const confirmed = await auth.handler(
+			new Request(emailUrl(confirmation.text), { headers: { cookie } }),
+		);
+		expect(confirmed.status).toBe(302);
+		expect(await userEmail(database, "current@example.com")).toMatchObject({
+			email: "current@example.com",
+			email_verified: 1,
+		});
+		const verification = await latestEmail(database);
+		expect(verification.to).toBe("changed@example.com");
+		expect(verification.subject).toContain("Verify your Test Shop email");
+
+		const verified = await auth.handler(
+			new Request(emailUrl(verification.text), { headers: { cookie } }),
+		);
+		expect(verified.status).toBe(302);
+		expect(await userEmail(database, "changed@example.com")).toEqual({
+			email: "changed@example.com",
+			email_verified: 1,
+		});
+		const audit = await database
+			.prepare(
+				`SELECT COUNT(*) AS count FROM audit_logs
+				 WHERE action = 'auth.email_change_requested'`,
+			)
+			.first<{ count: number }>();
+		expect(audit?.count).toBe(1);
+	});
+
+	it("does not reveal duplicate emails and disables changes without delivery", async () => {
+		const auth = createEmailAuth(database);
+		await verifySignup(
+			auth,
+			database,
+			await signUp(auth, "primary@example.com"),
+		);
+		await verifySignup(
+			auth,
+			database,
+			await signUp(auth, "occupied@example.com"),
+		);
+		await clearDeliveries(database);
+		const signedIn = await auth.handler(
+			jsonRequest("/api/auth/sign-in/email", {
+				email: "primary@example.com",
+				password: "very-secure-password",
+			}),
+		);
+		const cookie = responseCookie(signedIn);
+		const duplicate = await auth.handler(
+			jsonRequest(
+				"/api/auth/change-email",
+				{
+					newEmail: "occupied@example.com",
+					callbackURL: "/account/settings",
+				},
+				cookie,
+			),
+		);
+		expect(duplicate.status).toBe(200);
+		expect(
+			(
+				await database
+					.prepare("SELECT COUNT(*) AS count FROM notification_deliveries")
+					.first<{ count: number }>()
+			)?.count,
+		).toBe(0);
+
+		const unavailable = await createEmailAuth(database, false).handler(
+			jsonRequest(
+				"/api/auth/change-email",
+				{
+					newEmail: "another@example.com",
+					callbackURL: "/account/settings",
+				},
+				cookie,
+			),
+		);
+		expect(unavailable.status).toBe(400);
+	});
+
+	it("rate limits repeated email change requests", async () => {
+		const auth = createEmailAuth(database);
+		await verifySignup(
+			auth,
+			database,
+			await signUp(auth, "limited@example.com"),
+		);
+		await clearDeliveries(database);
+		const signedIn = await auth.handler(
+			jsonRequest("/api/auth/sign-in/email", {
+				email: "limited@example.com",
+				password: "very-secure-password",
+			}),
+		);
+		const cookie = responseCookie(signedIn);
+		const statuses: number[] = [];
+		for (let index = 0; index < 4; index += 1) {
+			const response = await auth.handler(
+				jsonRequest(
+					"/api/auth/change-email",
+					{
+						newEmail: `limited-${index}@example.com`,
+						callbackURL: "/account/settings",
+					},
+					cookie,
+					"203.0.113.88",
+				),
+			);
+			statuses.push(response.status);
+		}
+		expect(statuses).toEqual([200, 200, 200, 429]);
+	});
 });
 
-function jsonRequest(path: string, body: unknown) {
+function createEmailAuth(database: D1Database, emailDeliveryEnabled = true) {
+	return createAuth(drizzle(database, { schema }), {
+		BETTER_AUTH_SECRET: "better-auth-test-secret-at-least-32-characters",
+		BETTER_AUTH_URL: "https://shop.example",
+		TRUSTED_ORIGINS: ["https://shop.example"],
+		EMAIL_DELIVERY_ENABLED: emailDeliveryEnabled,
+		REQUIRE_EMAIL_VERIFICATION: true,
+		SITE_NAME: "Test Shop",
+		AUTH_PROVIDERS: [
+			{
+				id: "credential-provider",
+				providerId: "credential",
+				providerType: "email_password",
+				displayName: "Email",
+				clientId: null,
+				clientSecret: null,
+				scopes: [],
+				allowSignup: true,
+				revision: 1,
+				telegramBotUserId: null,
+				telegramBotUsername: null,
+				telegramBotToken: null,
+				telegramMiniAppEnabled: false,
+			},
+		],
+	});
+}
+
+function jsonRequest(
+	path: string,
+	body: unknown,
+	cookie?: string,
+	clientIp?: string,
+) {
 	return new Request(`https://shop.example${path}`, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
 			Origin: "https://shop.example",
+			...(cookie ? { Cookie: cookie } : {}),
+			"cf-connecting-ip": clientIp ?? `198.51.100.${authEmailRequestAddress++}`,
 		},
 		body: JSON.stringify(body),
 	});
+}
+
+async function verifySignup(
+	auth: ReturnType<typeof createAuth>,
+	database: D1Database,
+	signup: Response,
+) {
+	const verification = await latestEmail(database);
+	const response = await auth.handler(
+		new Request(emailUrl(verification.text), {
+			headers: { cookie: responseCookie(signup) },
+		}),
+	);
+	expect(response.status).toBe(302);
+}
+
+function signUp(auth: ReturnType<typeof createAuth>, email: string) {
+	return auth.handler(
+		jsonRequest("/api/auth/sign-up/email", {
+			name: "Buyer",
+			email,
+			password: "very-secure-password",
+			preferredLocale: "en-US",
+			callbackURL: "/account/settings",
+		}),
+	);
+}
+
+function responseCookie(response: Response) {
+	return response.headers.get("set-cookie")?.split(";")[0] ?? "";
+}
+
+async function clearDeliveries(database: D1Database) {
+	await database.prepare("DELETE FROM notification_deliveries").run();
+}
+
+async function latestEmail(database: D1Database) {
+	const delivery = await database
+		.prepare(
+			`SELECT message_encrypted FROM notification_deliveries
+			 ORDER BY created_at DESC, id DESC LIMIT 1`,
+		)
+		.first<{ message_encrypted: string }>();
+	return JSON.parse(
+		await decryptNotificationMessage(
+			delivery?.message_encrypted ?? "",
+			"commerce-test-secret",
+		),
+	) as { subject: string; text: string; to: string };
+}
+
+function emailUrl(text: string) {
+	const match = text.match(/https:\/\/\S+/);
+	if (!match) throw new Error("Verification email does not contain a URL");
+	return match[0];
+}
+
+function userEmail(database: D1Database, email: string) {
+	return database
+		.prepare("SELECT email, email_verified FROM users WHERE email = ?")
+		.bind(email)
+		.first<{ email: string; email_verified: number }>();
 }
 
 async function seed(database: D1Database) {
