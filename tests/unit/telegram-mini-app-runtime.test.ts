@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 	miniAppMount: vi.fn(),
 	ready: vi.fn(),
 	requestFullscreen: vi.fn(),
+	retrieveLaunchParams: vi.fn(),
 	retrieveRawInitData: vi.fn(),
 	viewportMount: vi.fn(),
 }));
@@ -26,6 +27,7 @@ vi.mock("@tma.js/sdk", () => {
 	) => Object.assign(fn, { isAvailable: () => availability[key] });
 	return {
 		init: mocks.init,
+		retrieveLaunchParams: mocks.retrieveLaunchParams,
 		retrieveRawInitData: mocks.retrieveRawInitData,
 		miniApp: {
 			mount: available(mocks.miniAppMount, "miniAppMount"),
@@ -57,19 +59,38 @@ describe("Telegram Mini App runtime", () => {
 		expect(mocks.requestFullscreen).not.toHaveBeenCalled();
 	});
 
-	it("falls back to expanding when fullscreen fails", async () => {
-		mocks.retrieveRawInitData.mockReturnValue("query_id=fullscreen-fallback");
+	it("does not let a pending mobile fullscreen request block sign-in", async () => {
+		mocks.retrieveRawInitData.mockReturnValue("query_id=mobile-fullscreen");
+		mocks.retrieveLaunchParams.mockReturnValue({
+			tgWebAppPlatform: "android",
+		});
 		mocks.viewportMount.mockResolvedValue(undefined);
-		mocks.requestFullscreen.mockRejectedValue(new Error("unsupported"));
+		mocks.requestFullscreen.mockReturnValue(new Promise(() => undefined));
 		const { startTelegramMiniApp } = await import(
 			"#/features/auth/components/telegram-mini-app-auto-sign-in"
 		);
 
 		await expect(startTelegramMiniApp()).resolves.toBe(
-			"query_id=fullscreen-fallback",
+			"query_id=mobile-fullscreen",
 		);
 		expect(mocks.ready).toHaveBeenCalledOnce();
-		expect(mocks.bindCssVars).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(mocks.bindCssVars).toHaveBeenCalledOnce());
 		expect(mocks.expand).toHaveBeenCalledOnce();
+		expect(mocks.requestFullscreen).toHaveBeenCalledWith({ timeout: 3_000 });
+	});
+
+	it("expands without requesting fullscreen on Telegram Desktop", async () => {
+		mocks.retrieveRawInitData.mockReturnValue("query_id=desktop");
+		mocks.retrieveLaunchParams.mockReturnValue({
+			tgWebAppPlatform: "tdesktop",
+		});
+		mocks.viewportMount.mockResolvedValue(undefined);
+		const { startTelegramMiniApp } = await import(
+			"#/features/auth/components/telegram-mini-app-auto-sign-in"
+		);
+
+		await expect(startTelegramMiniApp()).resolves.toBe("query_id=desktop");
+		await vi.waitFor(() => expect(mocks.expand).toHaveBeenCalledOnce());
+		expect(mocks.requestFullscreen).not.toHaveBeenCalled();
 	});
 });

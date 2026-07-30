@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 	ready: vi.fn(),
 	refetch: vi.fn(),
 	requestFullscreen: vi.fn(),
+	retrieveLaunchParams: vi.fn(),
 	retrieveRawInitData: vi.fn(),
 	sessionData: { value: null as { user: { id: string } } | null },
 	signInWithMiniApp: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@tma.js/sdk", () => {
 		Object.assign(fn, { isAvailable: () => true });
 	return {
 		init: mocks.init,
+		retrieveLaunchParams: mocks.retrieveLaunchParams,
 		retrieveRawInitData: mocks.retrieveRawInitData,
 		miniApp: {
 			mount: available(mocks.miniAppMount),
@@ -74,6 +76,9 @@ describe("Telegram Mini App auto sign-in", () => {
 		mocks.retrieveRawInitData.mockReturnValue(
 			"query_id=unique-mini-app-launch",
 		);
+		mocks.retrieveLaunchParams.mockReturnValue({
+			tgWebAppPlatform: "tdesktop",
+		});
 		mocks.viewportMount.mockResolvedValue(undefined);
 		mocks.requestFullscreen.mockResolvedValue(undefined);
 		mocks.sessionData.value = null;
@@ -86,7 +91,7 @@ describe("Telegram Mini App auto sign-in", () => {
 		vi.clearAllMocks();
 	});
 
-	it("signs in once on launch even when React replays effects", async () => {
+	it("signs in once on Telegram Desktop even when React replays effects", async () => {
 		const root = createRoot(container);
 		const queryClient = new QueryClient({
 			defaultOptions: { queries: { retry: false } },
@@ -116,13 +121,13 @@ describe("Telegram Mini App auto sign-in", () => {
 		expect(mocks.ready).toHaveBeenCalledOnce();
 		expect(mocks.viewportMount).toHaveBeenCalledOnce();
 		expect(mocks.bindCssVars).toHaveBeenCalledOnce();
-		expect(mocks.requestFullscreen).toHaveBeenCalledOnce();
-		expect(mocks.expand).not.toHaveBeenCalled();
+		expect(mocks.expand).toHaveBeenCalledOnce();
+		expect(mocks.requestFullscreen).not.toHaveBeenCalled();
 
 		await act(async () => root.unmount());
 	});
 
-	it("initializes fullscreen without signing in or linking an existing session", async () => {
+	it("initializes the viewport without signing in an existing session again", async () => {
 		mocks.sessionData.value = { user: { id: "credential-user" } };
 		const root = createRoot(container);
 		const queryClient = new QueryClient({
@@ -143,7 +148,8 @@ describe("Telegram Mini App auto sign-in", () => {
 		expect(mocks.signInWithMiniApp).not.toHaveBeenCalled();
 		expect(mocks.refetch).not.toHaveBeenCalled();
 		expect(mocks.invalidate).not.toHaveBeenCalled();
-		expect(mocks.requestFullscreen).toHaveBeenCalledOnce();
+		expect(mocks.expand).toHaveBeenCalledOnce();
+		expect(mocks.requestFullscreen).not.toHaveBeenCalled();
 
 		await act(async () => root.unmount());
 	});
