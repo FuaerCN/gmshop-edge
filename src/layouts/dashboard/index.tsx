@@ -48,7 +48,7 @@ export function DashboardLayout({
 						<AppSidebar data={navigation} homeHref={homeHref} user={user} />
 						<SidebarInset
 							className={cn(
-								"@container/content overflow-x-hidden",
+								"@container/content overflow-x-hidden outline-none",
 								pageScroll
 									? "min-h-svh"
 									: [

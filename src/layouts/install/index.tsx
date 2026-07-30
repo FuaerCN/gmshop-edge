@@ -7,7 +7,7 @@ import { m } from "#/paraglide/messages";
 export function InstallLayout({ children }: { children: React.ReactNode }) {
 	return (
 		<main
-			className="relative min-h-svh overflow-hidden px-4 py-10"
+			className="relative min-h-svh overflow-hidden px-4 py-10 outline-none"
 			id="content"
 			tabIndex={-1}
 		>

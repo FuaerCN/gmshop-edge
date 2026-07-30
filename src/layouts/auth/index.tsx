@@ -55,7 +55,7 @@ function AuthLayoutContent() {
 					</div>
 				</header>
 				<main
-					className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center pb-24"
+					className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center pb-24 outline-none"
 					id="content"
 					tabIndex={-1}
 				>

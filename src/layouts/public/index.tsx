@@ -14,7 +14,7 @@ export function PublicLayout() {
 			<div className="flex min-h-svh flex-col bg-background pt-safe text-foreground lg:pt-0">
 				<SkipToMain />
 				<PublicHeader />
-				<main className="w-full flex-1" id="content" tabIndex={-1}>
+				<main className="w-full flex-1 outline-none" id="content" tabIndex={-1}>
 					<Outlet />
 				</main>
 				<PublicFooter />
