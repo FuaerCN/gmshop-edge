@@ -25,6 +25,7 @@ import { Label } from "#/components/ui/label";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Switch } from "#/components/ui/switch";
 import { authClient } from "#/features/auth/auth-client";
+import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import {
 	StoreMoney,
 	useCurrency,
@@ -83,6 +84,9 @@ export function StorefrontCheckoutPage() {
 	const navigate = useNavigate();
 	const { currency: paymentCurrency } = useCurrency();
 	const session = authClient.useSession();
+	const accountHasPublicEmail =
+		Boolean(session.data?.user.email) &&
+		!isInternalIdentityEmail(session.data?.user.email);
 	const local = useLocalCart();
 	const search = useSearch({ from: "/(public)/checkout/" });
 	const buyNow =
@@ -196,7 +200,8 @@ export function StorefrontCheckoutPage() {
 	}, [items.length]);
 	useEffect(() => {
 		const accountEmail = session.data?.user.email;
-		if (accountEmail) setEmail(accountEmail);
+		if (accountEmail && !isInternalIdentityEmail(accountEmail))
+			setEmail(accountEmail);
 	}, [session.data?.user.email]);
 	useEffect(() => {
 		const first = channels.data?.[0];
@@ -438,7 +443,7 @@ export function StorefrontCheckoutPage() {
 								id="checkout-email"
 								onChange={(event) => setEmail(event.target.value)}
 								placeholder={m.store_email_placeholder()}
-								readOnly={Boolean(session.data?.user.email)}
+								readOnly={accountHasPublicEmail}
 								required
 								type="email"
 								value={email}

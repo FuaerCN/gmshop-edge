@@ -19,7 +19,6 @@ import { Route as ApiSiteLogoRouteImport } from './routes/api/site-logo'
 import { Route as AdminPaymentConfigurationsRouteImport } from './routes/admin/payment-configurations'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminDeliveryRouteImport } from './routes/admin/delivery'
-import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminCouponsRouteImport } from './routes/admin/coupons'
 import { Route as AdminAutomationRouteImport } from './routes/admin/automation'
 import { Route as AdminAuthRouteImport } from './routes/admin/auth'
@@ -70,7 +69,6 @@ import { Route as AdminOperationsQueuesRouteImport } from './routes/admin/operat
 import { Route as AdminOperationsAuditLogsRouteImport } from './routes/admin/operations/audit-logs'
 import { Route as AdminEmailTemplatesRouteImport } from './routes/admin/email/templates'
 import { Route as AdminEmailRecordsRouteImport } from './routes/admin/email/records'
-import { Route as AdminCustomersCustomerIdRouteImport } from './routes/admin/customers/$customerId'
 import { Route as AdminAccessUsersRouteImport } from './routes/admin/access/users'
 import { Route as AdminAccessRolesRouteImport } from './routes/admin/access/roles'
 import { Route as AdminAccessPermissionBitsRouteImport } from './routes/admin/access/permission-bits'
@@ -150,11 +148,6 @@ const AdminOrdersRoute = AdminOrdersRouteImport.update({
 const AdminDeliveryRoute = AdminDeliveryRouteImport.update({
   id: '/delivery',
   path: '/delivery',
-  getParentRoute: () => AdminRouteRoute,
-} as any)
-const AdminCustomersRoute = AdminCustomersRouteImport.update({
-  id: '/customers',
-  path: '/customers',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminCouponsRoute = AdminCouponsRouteImport.update({
@@ -410,12 +403,6 @@ const AdminEmailRecordsRoute = AdminEmailRecordsRouteImport.update({
   path: '/records',
   getParentRoute: () => AdminEmailRouteRoute,
 } as any)
-const AdminCustomersCustomerIdRoute =
-  AdminCustomersCustomerIdRouteImport.update({
-    id: '/$customerId',
-    path: '/$customerId',
-    getParentRoute: () => AdminCustomersRoute,
-  } as any)
 const AdminAccessUsersRoute = AdminAccessUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -618,7 +605,6 @@ export interface FileRoutesByFullPath {
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/coupons': typeof AdminCouponsRoute
-  '/admin/customers': typeof AdminCustomersRouteWithChildren
   '/admin/delivery': typeof AdminDeliveryRoute
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/payment-configurations': typeof AdminPaymentConfigurationsRoute
@@ -638,7 +624,6 @@ export interface FileRoutesByFullPath {
   '/admin/access/permission-bits': typeof AdminAccessPermissionBitsRoute
   '/admin/access/roles': typeof AdminAccessRolesRoute
   '/admin/access/users': typeof AdminAccessUsersRoute
-  '/admin/customers/$customerId': typeof AdminCustomersCustomerIdRoute
   '/admin/email/records': typeof AdminEmailRecordsRoute
   '/admin/email/templates': typeof AdminEmailTemplatesRoute
   '/admin/operations/audit-logs': typeof AdminOperationsAuditLogsRoute
@@ -703,7 +688,6 @@ export interface FileRoutesByTo {
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/coupons': typeof AdminCouponsRoute
-  '/admin/customers': typeof AdminCustomersRouteWithChildren
   '/admin/delivery': typeof AdminDeliveryRoute
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/payment-configurations': typeof AdminPaymentConfigurationsRoute
@@ -722,7 +706,6 @@ export interface FileRoutesByTo {
   '/admin/access/permission-bits': typeof AdminAccessPermissionBitsRoute
   '/admin/access/roles': typeof AdminAccessRolesRoute
   '/admin/access/users': typeof AdminAccessUsersRoute
-  '/admin/customers/$customerId': typeof AdminCustomersCustomerIdRoute
   '/admin/email/records': typeof AdminEmailRecordsRoute
   '/admin/email/templates': typeof AdminEmailTemplatesRoute
   '/admin/operations/audit-logs': typeof AdminOperationsAuditLogsRoute
@@ -798,7 +781,6 @@ export interface FileRoutesById {
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/coupons': typeof AdminCouponsRoute
-  '/admin/customers': typeof AdminCustomersRouteWithChildren
   '/admin/delivery': typeof AdminDeliveryRoute
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/payment-configurations': typeof AdminPaymentConfigurationsRoute
@@ -818,7 +800,6 @@ export interface FileRoutesById {
   '/admin/access/permission-bits': typeof AdminAccessPermissionBitsRoute
   '/admin/access/roles': typeof AdminAccessRolesRoute
   '/admin/access/users': typeof AdminAccessUsersRoute
-  '/admin/customers/$customerId': typeof AdminCustomersCustomerIdRoute
   '/admin/email/records': typeof AdminEmailRecordsRoute
   '/admin/email/templates': typeof AdminEmailTemplatesRoute
   '/admin/operations/audit-logs': typeof AdminOperationsAuditLogsRoute
@@ -893,7 +874,6 @@ export interface FileRouteTypes {
     | '/admin/auth'
     | '/admin/automation'
     | '/admin/coupons'
-    | '/admin/customers'
     | '/admin/delivery'
     | '/admin/orders'
     | '/admin/payment-configurations'
@@ -913,7 +893,6 @@ export interface FileRouteTypes {
     | '/admin/access/permission-bits'
     | '/admin/access/roles'
     | '/admin/access/users'
-    | '/admin/customers/$customerId'
     | '/admin/email/records'
     | '/admin/email/templates'
     | '/admin/operations/audit-logs'
@@ -978,7 +957,6 @@ export interface FileRouteTypes {
     | '/admin/auth'
     | '/admin/automation'
     | '/admin/coupons'
-    | '/admin/customers'
     | '/admin/delivery'
     | '/admin/orders'
     | '/admin/payment-configurations'
@@ -997,7 +975,6 @@ export interface FileRouteTypes {
     | '/admin/access/permission-bits'
     | '/admin/access/roles'
     | '/admin/access/users'
-    | '/admin/customers/$customerId'
     | '/admin/email/records'
     | '/admin/email/templates'
     | '/admin/operations/audit-logs'
@@ -1072,7 +1049,6 @@ export interface FileRouteTypes {
     | '/admin/auth'
     | '/admin/automation'
     | '/admin/coupons'
-    | '/admin/customers'
     | '/admin/delivery'
     | '/admin/orders'
     | '/admin/payment-configurations'
@@ -1092,7 +1068,6 @@ export interface FileRouteTypes {
     | '/admin/access/permission-bits'
     | '/admin/access/roles'
     | '/admin/access/users'
-    | '/admin/customers/$customerId'
     | '/admin/email/records'
     | '/admin/email/templates'
     | '/admin/operations/audit-logs'
@@ -1237,13 +1212,6 @@ declare module '@tanstack/react-router' {
       path: '/delivery'
       fullPath: '/admin/delivery'
       preLoaderRoute: typeof AdminDeliveryRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
-    '/admin/customers': {
-      id: '/admin/customers'
-      path: '/customers'
-      fullPath: '/admin/customers'
-      preLoaderRoute: typeof AdminCustomersRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/coupons': {
@@ -1595,13 +1563,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/email/records'
       preLoaderRoute: typeof AdminEmailRecordsRouteImport
       parentRoute: typeof AdminEmailRouteRoute
-    }
-    '/admin/customers/$customerId': {
-      id: '/admin/customers/$customerId'
-      path: '/$customerId'
-      fullPath: '/admin/customers/$customerId'
-      preLoaderRoute: typeof AdminCustomersCustomerIdRouteImport
-      parentRoute: typeof AdminCustomersRoute
     }
     '/admin/access/users': {
       id: '/admin/access/users'
@@ -2024,18 +1985,6 @@ const AdminSuppliersRouteRouteChildren: AdminSuppliersRouteRouteChildren = {
 const AdminSuppliersRouteRouteWithChildren =
   AdminSuppliersRouteRoute._addFileChildren(AdminSuppliersRouteRouteChildren)
 
-interface AdminCustomersRouteChildren {
-  AdminCustomersCustomerIdRoute: typeof AdminCustomersCustomerIdRoute
-}
-
-const AdminCustomersRouteChildren: AdminCustomersRouteChildren = {
-  AdminCustomersCustomerIdRoute: AdminCustomersCustomerIdRoute,
-}
-
-const AdminCustomersRouteWithChildren = AdminCustomersRoute._addFileChildren(
-  AdminCustomersRouteChildren,
-)
-
 interface AdminOrdersRouteChildren {
   AdminOrdersOrderIdRoute: typeof AdminOrdersOrderIdRoute
 }
@@ -2058,7 +2007,6 @@ interface AdminRouteRouteChildren {
   AdminAuthRoute: typeof AdminAuthRoute
   AdminAutomationRoute: typeof AdminAutomationRoute
   AdminCouponsRoute: typeof AdminCouponsRoute
-  AdminCustomersRoute: typeof AdminCustomersRouteWithChildren
   AdminDeliveryRoute: typeof AdminDeliveryRoute
   AdminOrdersRoute: typeof AdminOrdersRouteWithChildren
   AdminPaymentConfigurationsRoute: typeof AdminPaymentConfigurationsRoute
@@ -2075,7 +2023,6 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminAuthRoute: AdminAuthRoute,
   AdminAutomationRoute: AdminAutomationRoute,
   AdminCouponsRoute: AdminCouponsRoute,
-  AdminCustomersRoute: AdminCustomersRouteWithChildren,
   AdminDeliveryRoute: AdminDeliveryRoute,
   AdminOrdersRoute: AdminOrdersRouteWithChildren,
   AdminPaymentConfigurationsRoute: AdminPaymentConfigurationsRoute,

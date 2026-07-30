@@ -23,6 +23,7 @@ import {
 	SheetTrigger,
 } from "#/components/ui/sheet";
 import { authClient } from "#/features/auth/auth-client";
+import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { CurrencySwitch } from "#/features/exchange-rates/currency-switch";
 import { useLocalCart } from "#/features/storefront/cart-storage";
 import { accountNavigation } from "#/features/storefront/components/account-navigation";
@@ -159,8 +160,8 @@ function MobileUserFooter({ user }: { user?: HeaderUser | null }) {
 				</Link>
 			</SheetClose>
 		);
-	const name = user.name || user.email || m.store_account_title();
-	const email = user.email || "";
+	const email = isInternalIdentityEmail(user.email) ? "" : user.email || "";
+	const name = user.name || email || m.store_account_title();
 	const fallback = getUserFallback(name, email);
 	return (
 		<>
@@ -202,8 +203,8 @@ function DesktopAccountActions({ user }: { user?: HeaderUser | null }) {
 				</Link>
 			</Button>
 		);
-	const name = user.name || user.email || m.store_account_title();
-	const email = user.email || "";
+	const email = isInternalIdentityEmail(user.email) ? "" : user.email || "";
+	const name = user.name || email || m.store_account_title();
 	const fallback = getUserFallback(name, email);
 	return (
 		<>

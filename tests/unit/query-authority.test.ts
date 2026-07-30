@@ -12,7 +12,7 @@ describe("shared query authority", () => {
 			"utf8",
 		);
 		const users = await readFile(
-			new URL("../../src/features/users/pages/admin-list.tsx", import.meta.url),
+			new URL("../../src/features/users/pages/admin.tsx", import.meta.url),
 			"utf8",
 		);
 
@@ -21,10 +21,10 @@ describe("shared query authority", () => {
 		);
 		expect(query).toContain("staleTime: 5 * 60_000");
 		expect(roles).toContain("useQuery(systemAccessQueryOptions)");
-		expect(users).toContain("useQuery(systemAccessQueryOptions)");
+		expect(users).toContain("systemAccessQueryOptions");
 		expect(users).not.toContain("roles-for-users");
 		expect(users).toContain(
-			"queryClient.invalidateQueries({ queryKey: systemAccessQueryKey })",
+			"client.invalidateQueries({ queryKey: systemAccessQueryKey })",
 		);
 	});
 });

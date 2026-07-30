@@ -650,19 +650,25 @@ export function AccountSettingsPage({ account }: { account: Account }) {
 								{m.store_account_security_description()}
 							</p>
 						</div>
-						<Button form="account-password-form" size="sm" type="submit">
-							{m.store_account_save()}
-						</Button>
+						{account.hasPassword || account.user.email ? (
+							<Button form="account-password-form" size="sm" type="submit">
+								{m.store_account_save()}
+							</Button>
+						) : null}
 					</div>
 					{account.hasPassword ? (
 						<ChangePasswordForm formId="account-password-form" />
-					) : (
+					) : account.user.email ? (
 						<>
 							<p className="text-muted-foreground text-sm">
 								{m.store_account_set_password_description()}
 							</p>
 							<SetPasswordForm formId="account-password-form" />
 						</>
+					) : (
+						<p className="text-muted-foreground text-sm">
+							{m.store_account_password_bind_email_first()}
+						</p>
 					)}
 				</section>
 				<section className="grid content-start gap-5 rounded-3xl border bg-card p-5 sm:p-6">
@@ -690,7 +696,14 @@ function AccountEmailSettings({ account }: { account: Account }) {
 	const emailDeliveryEnabled =
 		providers.data?.some((provider) => provider.emailDeliveryEnabled) === true;
 	const changeEmail = useMutation({
-		mutationFn: async (newEmail: string) => {
+		mutationFn: async ({
+			newEmail,
+			newPassword,
+		}: {
+			newEmail: string;
+			newPassword?: string;
+		}) => {
+			if (newPassword) await setAccountPasswordFn({ data: { newPassword } });
 			const result = await authClient.changeEmail({
 				newEmail,
 				callbackURL: "/account/settings",
@@ -760,13 +773,19 @@ function AccountEmailSettings({ account }: { account: Account }) {
 				<ProSchemaForm
 					className="grid gap-3"
 					id={formId}
-					initialValues={{ email: "" }}
 					onFinish={async (values) => {
-						await changeEmail.mutateAsync(
-							String(values.email ?? "")
+						const newPassword = String(values.newPassword ?? "");
+						if (
+							!account.hasPassword &&
+							newPassword !== String(values.confirmPassword ?? "")
+						)
+							throw new Error("passwords_do_not_match");
+						await changeEmail.mutateAsync({
+							newEmail: String(values.email ?? "")
 								.trim()
 								.toLowerCase(),
-						);
+							...(account.hasPassword ? {} : { newPassword }),
+						});
 					}}
 					schema={[
 						{
@@ -779,6 +798,24 @@ function AccountEmailSettings({ account }: { account: Account }) {
 								type: "email",
 							},
 						},
+						...(!account.hasPassword
+							? [
+									{
+										name: "newPassword",
+										label: m.account_change_password_new_password_label(),
+										valueType: "password" as const,
+										required: true,
+										fieldProps: { minLength: 12, maxLength: 200 },
+									},
+									{
+										name: "confirmPassword",
+										label: m.account_change_password_confirm_password_label(),
+										valueType: "password" as const,
+										required: true,
+										fieldProps: { minLength: 12, maxLength: 200 },
+									},
+								]
+							: []),
 					]}
 					submitter={false}
 				/>

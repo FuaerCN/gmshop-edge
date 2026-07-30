@@ -63,16 +63,19 @@ describe("local acceptance seed contract", () => {
 			expect(source).toContain(`"${policy}"`);
 	});
 
-	it("keeps R2 fixture writes opt-in", async () => {
+	it("exposes one local seed command for acceptance, R2, and Telegram fixtures", async () => {
 		const packageJson = JSON.parse(await readFile(packageUrl, "utf8")) as {
 			scripts: Record<string, string>;
 		};
 
-		expect(packageJson.scripts["seed:acceptance:local"]).toBe(
-			"bun run scripts/seed-acceptance.ts --local",
+		expect(packageJson.scripts["seed:local"]).toBe(
+			"bun run scripts/seed-acceptance.ts --local --with-r2",
 		);
-		expect(packageJson.scripts["seed:acceptance:local:r2"]).toContain(
-			"--with-r2",
+		expect(
+			Object.keys(packageJson.scripts).filter((key) => key.startsWith("seed:")),
+		).toEqual(["seed:local"]);
+		expect(await readFile(seedSourceUrl, "utf8")).toContain(
+			"seedTelegramMiniAppUser",
 		);
 	});
 
@@ -227,7 +230,9 @@ describe("local acceptance seed contract", () => {
 		expect(source).toContain("putKvValue");
 		expect(source).toContain("demo-acg-sku-premium");
 		expect(source).toContain("demo-dujiao-sku-year");
-		expect(source).not.toContain("await fetch(");
+		expect(source.match(/await fetch\(/g)).toHaveLength(1);
+		expect(source).toContain("/api/auth/telegram/miniapp/signin");
+		expect(source).toContain("localAuthOrigin");
 	});
 });
 

@@ -1,6 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
-import { z } from "zod";
-import { systemPermission } from "#/features/access/system-rbac";
+import type { z } from "zod";
+import {
+	hasSystemPermission,
+	systemPermission,
+} from "#/features/access/system-rbac";
+import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { verifySensitiveAdminAction } from "#/features/auth/server/reauthenticate";
 import {
 	customerIdSchema,
@@ -8,130 +12,35 @@ import {
 	customerSensitiveActionSchema,
 	customerUpdateSchema,
 } from "#/features/customers/schema";
+import {
+	type ListedUserRow,
+	listedUserCommerceProjection,
+	listedUsersCte,
+	listUsersWithCommerce,
+	presentListedUser,
+} from "#/features/users/server/list";
 import { DomainError } from "#/lib/domain-error";
 import { createAuditStatement } from "#/server/audit";
-import { getAdminServerContext } from "#/server/context";
+import {
+	getAdminServerContext,
+	getAdminServerContextAny,
+} from "#/server/context";
 import { prepareCustomerDataDeletion } from "./privacy";
 
-const customerIdentitiesCte = `WITH customer_identities AS (
-	SELECT u.id, u.id AS user_id, u.email, lower(u.email) AS normalized_email,
-	 u.name, u.customer_note AS note,
-	 CASE WHEN u.enabled = 1 THEN 'active' ELSE 'disabled' END AS status,
-	 u.last_ordered_at, u.created_at, u.updated_at, u.enabled AS user_enabled
-	FROM users u
-	WHERE EXISTS (
-	 SELECT 1 FROM json_each(u.role_ids) assigned
-	 JOIN roles r ON r.id = assigned.value
-	 WHERE r.name = 'customer' AND r.enabled = 1
-	)
-	UNION ALL
-	SELECT MIN(o.id) AS id, NULL AS user_id, MIN(o.contact_email) AS email,
-	 o.normalized_contact_email AS normalized_email, NULL AS name, NULL AS note,
-	 'active' AS status, MAX(o.created_at) AS last_ordered_at,
-	 MIN(o.created_at) AS created_at, MAX(o.updated_at) AS updated_at,
-	 NULL AS user_enabled
-	FROM shop_orders o
-	WHERE o.user_id IS NULL AND o.normalized_contact_email IS NOT NULL
-	GROUP BY o.normalized_contact_email
-)`;
-
-type CustomerRow = {
-	id: string;
-	user_id: string | null;
-	email: string;
-	normalized_email: string;
-	name: string | null;
-	note: string | null;
-	status: "active" | "disabled";
-	last_ordered_at: number | null;
-	created_at: number;
-	updated_at: number;
-	user_enabled: number | null;
-	order_count: number;
-	entitlement_count: number;
-	active_entitlement_count: number;
-	balances_json: string;
-};
-
-const balanceSchema = z.array(
-	z.object({
-		currency: z.string(),
-		currencyDecimals: z.number().int(),
-		balanceMinor: z.string().regex(/^\d+$/),
-		spentMinor: z.string().regex(/^\d+$/),
-		orderCount: z.number().int().min(0),
-	}),
-);
-
-const orderIdentityMatch =
-	"((c.user_id IS NOT NULL AND customer_order.user_id = c.user_id) OR (c.user_id IS NULL AND customer_order.user_id IS NULL AND customer_order.normalized_contact_email = c.normalized_email))";
-const entitlementIdentityMatch =
-	"((c.user_id IS NOT NULL AND ce.user_id = c.user_id) OR (c.user_id IS NULL AND ce.user_id IS NULL AND entitlement_order.normalized_contact_email = c.normalized_email))";
-
-const customerProjection = `SELECT c.*,
-	(SELECT COUNT(*) FROM shop_orders customer_order
-	 WHERE ${orderIdentityMatch}
-	) AS order_count,
-	(SELECT COUNT(*) FROM customer_entitlements ce
-	 JOIN shop_order_items oi ON oi.id = ce.order_item_id
-	 JOIN shop_orders entitlement_order ON entitlement_order.id = oi.order_id
-	 WHERE ${entitlementIdentityMatch}
-	) AS entitlement_count,
-	(SELECT COUNT(*) FROM customer_entitlements ce
-	 JOIN shop_order_items oi ON oi.id = ce.order_item_id
-	 JOIN shop_orders entitlement_order ON entitlement_order.id = oi.order_id
-	 WHERE ce.status = 'active'
-	  AND ${entitlementIdentityMatch}
-	) AS active_entitlement_count,
-	COALESCE((SELECT json_group_array(json_object(
-	 'currency', summary.currency,
-	 'currencyDecimals', summary.currency_decimals,
-	 'balanceMinor', '0',
-	 'spentMinor', summary.spent_minor,
-	 'orderCount', summary.order_count))
-	FROM (
-	 SELECT customer_order.currency, customer_order.currency_decimals,
-	  CAST(SUM(CAST(customer_order.paid_minor AS INTEGER)) AS TEXT) AS spent_minor,
-	  COUNT(*) AS order_count
-	 FROM shop_orders customer_order
-	 WHERE ${orderIdentityMatch}
-	 GROUP BY customer_order.currency, customer_order.currency_decimals
-	 ORDER BY customer_order.currency
-	) summary), '[]') AS balances_json
-	FROM customer_identities c`;
-
-export const listCustomersFn = createServerFn({ method: "GET" })
+export const listUsersWithCommerceFn = createServerFn({ method: "GET" })
 	.validator((input: z.input<typeof customerListSchema>) =>
 		customerListSchema.parse(input),
 	)
 	.handler(async ({ data }) => {
-		const { db } = await getAdminServerContext(
+		const { currentUser, db } = await getAdminServerContextAny([
+			systemPermission("customers", "read"),
+			systemPermission("users", "read"),
+		]);
+		const includeCommerce = hasSystemPermission(
+			currentUser.permissions,
 			systemPermission("customers", "read"),
 		);
-		const search = data.search ? `%${data.search}%` : null;
-		const where = search
-			? "WHERE c.email LIKE ? OR c.name LIKE ? OR c.note LIKE ?"
-			: "";
-		const bindings = search ? [search, search, search] : [];
-		const [count, rows] = await db.$client.batch([
-			db.$client
-				.prepare(
-					`${customerIdentitiesCte} SELECT COUNT(*) AS total FROM customer_identities c ${where}`,
-				)
-				.bind(...bindings),
-			db.$client
-				.prepare(
-					`${customerIdentitiesCte} ${customerProjection} ${where}
-					 ORDER BY c.created_at DESC, c.id DESC LIMIT ? OFFSET ?`,
-				)
-				.bind(...bindings, data.pageSize, data.pageIndex * data.pageSize),
-		]);
-		return {
-			data: ((rows?.results ?? []) as CustomerRow[]).map(presentCustomer),
-			total: Number(
-				(count?.results[0] as { total?: unknown } | undefined)?.total ?? 0,
-			),
-		};
+		return listUsersWithCommerce(db.$client, data, includeCommerce);
 	});
 
 export const getCustomerFn = createServerFn({ method: "GET" })
@@ -144,10 +53,10 @@ export const getCustomerFn = createServerFn({ method: "GET" })
 		);
 		const customer = await db.$client
 			.prepare(
-				`${customerIdentitiesCte} ${customerProjection} WHERE c.id = ? LIMIT 1`,
+				`${listedUsersCte} ${listedUserCommerceProjection} WHERE c.id = ? LIMIT 1`,
 			)
 			.bind(data.id)
-			.first<CustomerRow>();
+			.first<ListedUserRow>();
 		if (!customer)
 			throw new DomainError("customer_not_found", 404, "Customer not found");
 		const scope = customerScope(customer);
@@ -177,7 +86,7 @@ export const getCustomerFn = createServerFn({ method: "GET" })
 				.all(),
 		]);
 		return {
-			...presentCustomer(customer),
+			...presentListedUser(customer),
 			orders: orders.results.map((row) => ({
 				id: String(row.id),
 				orderNumber: String(row.order_number),
@@ -217,19 +126,12 @@ export const updateCustomerFn = createServerFn({ method: "POST" })
 			.prepare(
 				`SELECT id, name, customer_note AS note,
 				 CASE WHEN enabled = 1 THEN 'active' ELSE 'disabled' END AS status
-				 FROM users WHERE id = ? AND EXISTS (
-				  SELECT 1 FROM json_each(users.role_ids) assigned
-				  JOIN roles r ON r.id = assigned.value WHERE r.name = 'customer'
-				 ) LIMIT 1`,
+				 FROM users WHERE id = ? LIMIT 1`,
 			)
 			.bind(data.id)
 			.first<Record<string, unknown>>();
 		if (!before)
-			throw new DomainError(
-				"customer_account_required",
-				409,
-				"Guest customer profiles cannot be edited",
-			);
+			throw new DomainError("customer_not_found", 404, "User not found");
 		const now = Date.now();
 		await db.$client.batch([
 			db.$client
@@ -265,10 +167,10 @@ export const exportCustomerDataFn = createServerFn({ method: "POST" })
 		await verifySensitiveAdminAction(request, currentUser.id, data);
 		const customer = await db.$client
 			.prepare(
-				`${customerIdentitiesCte} SELECT * FROM customer_identities WHERE id = ? LIMIT 1`,
+				`${listedUsersCte} SELECT * FROM listed_users WHERE id = ? LIMIT 1`,
 			)
 			.bind(data.id)
-			.first<CustomerRow>();
+			.first<ListedUserRow>();
 		if (!customer)
 			throw new DomainError("customer_not_found", 404, "Customer not found");
 		const scope = customerScope(customer);
@@ -292,10 +194,14 @@ export const exportCustomerDataFn = createServerFn({ method: "POST" })
 				.bind(...scope.bindings),
 		]);
 		const exportedAt = new Date().toISOString();
+		const exportedUser = {
+			...customer,
+			email: isInternalIdentityEmail(customer.email) ? null : customer.email,
+		};
 		const content = JSON.stringify(
 			{
 				exportedAt,
-				customer,
+				user: exportedUser,
 				orders: orders?.results ?? [],
 				entitlements: entitlements?.results ?? [],
 			},
@@ -309,19 +215,18 @@ export const exportCustomerDataFn = createServerFn({ method: "POST" })
 		}).run();
 		return {
 			content,
-			fileName: `gmshop-customer-${data.id}-${exportedAt.slice(0, 10)}.json`,
+			fileName: `gmshop-user-${data.id}-${exportedAt.slice(0, 10)}.json`,
 		};
 	});
 
 export const deleteCustomerDataFn = createServerFn({ method: "POST" })
-	.validator((input: z.input<typeof customerSensitiveActionSchema>) =>
-		customerSensitiveActionSchema.parse(input),
+	.validator((input: z.input<typeof customerIdSchema>) =>
+		customerIdSchema.parse(input),
 	)
 	.handler(async ({ data }) => {
 		const { currentUser, db, request } = await getAdminServerContext(
 			systemPermission("customers", "delete"),
 		);
-		await verifySensitiveAdminAction(request, currentUser.id, data);
 		const now = Date.now();
 		const deletion = await prepareCustomerDataDeletion(
 			db.$client,
@@ -341,38 +246,10 @@ export const deleteCustomerDataFn = createServerFn({ method: "POST" })
 		return { id: data.id };
 	});
 
-function customerScope(
-	customer: Pick<CustomerRow, "user_id" | "normalized_email">,
-) {
-	if (customer.user_id)
-		return {
-			condition: "user_id = ?",
-			entitlementCondition: "ce.user_id = ?",
-			bindings: [customer.user_id],
-		};
+function customerScope(customer: Pick<ListedUserRow, "user_id">) {
 	return {
-		condition: "user_id IS NULL AND normalized_contact_email = ?",
-		entitlementCondition:
-			"ce.user_id IS NULL AND o.user_id IS NULL AND o.normalized_contact_email = ?",
-		bindings: [customer.normalized_email],
-	};
-}
-
-function presentCustomer(row: CustomerRow) {
-	return {
-		id: row.id,
-		userId: row.user_id,
-		email: row.email,
-		name: row.name,
-		note: row.note,
-		status: row.status,
-		userEnabled: row.user_enabled == null ? null : Boolean(row.user_enabled),
-		orderCount: Number(row.order_count),
-		entitlementCount: Number(row.entitlement_count),
-		activeEntitlementCount: Number(row.active_entitlement_count),
-		balances: balanceSchema.parse(JSON.parse(row.balances_json)),
-		lastOrderedAt: row.last_ordered_at,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
+		condition: "user_id = ?",
+		entitlementCondition: "ce.user_id = ?",
+		bindings: [customer.user_id],
 	};
 }

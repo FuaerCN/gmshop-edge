@@ -117,7 +117,20 @@ describe("authentication email flow", { timeout: 30_000 }, () => {
 
 	it("binds an unverified identity email only after new-email verification", async () => {
 		const auth = createEmailAuth(database);
-		await signUp(auth, "temporary@example.com");
+		const signup = await signUp(auth, "temporary@example.com");
+		const initialVerification = await latestEmail(database);
+		await auth.handler(
+			new Request(emailUrl(initialVerification.text), {
+				headers: { cookie: responseCookie(signup) },
+			}),
+		);
+		const signedIn = await auth.handler(
+			jsonRequest("/api/auth/sign-in/email", {
+				email: "temporary@example.com",
+				password: "very-secure-password",
+			}),
+		);
+		const cookie = responseCookie(signedIn);
 		await database
 			.prepare(
 				`UPDATE users SET email = '42@telegram.invalid',
@@ -125,13 +138,13 @@ describe("authentication email flow", { timeout: 30_000 }, () => {
 			)
 			.run();
 		await clearDeliveries(database);
-		const signedIn = await auth.handler(
+		const placeholderSignIn = await auth.handler(
 			jsonRequest("/api/auth/sign-in/email", {
 				email: "42@telegram.invalid",
 				password: "very-secure-password",
 			}),
 		);
-		const cookie = responseCookie(signedIn);
+		expect(placeholderSignIn.status).toBe(401);
 		await database
 			.prepare(
 				`UPDATE users SET email_verified = 0

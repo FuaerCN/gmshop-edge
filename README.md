@@ -224,9 +224,7 @@ bun run build
 After installing a local instance, populate idempotent acceptance fixtures with:
 
 ```bash
-bun run seed:acceptance:local
-# Also write product media, downloads, and automation artifacts
-bun run seed:acceptance:local:r2
+bun run seed:local
 ```
 
 The fixtures cover products, stock, payment channels, customer orders and
@@ -234,9 +232,11 @@ entitlements, plus three supplier accounts across both supported platforms,
 three bindings, three supplier-order states, and local catalog snapshots with
 unimported SKUs for testing the all-sources list and bulk import. Orders and
 entitlements belong to the installed `root@example.com`, whose local test password is reset to
-`root@example.com`; the script does not create another test user. Supplier accounts are
+`root@example.com`. Supplier accounts are
 disabled, their API origins use `.example.invalid`, and automatic
 synchronization remains off, so the seed cannot contact a real upstream.
+The command also writes product media, downloads, automation artifacts, and
+creates the local Telegram test user through the Telegram Mini App auto-sign-in flow.
 Replace the credentials and explicitly enable accounts in the admin console for
 integration testing. The script accepts `--local` only, preserves existing
 rows, and cannot write to a remote D1 database.

@@ -65,10 +65,7 @@ describe("access and user Server Function error presentation", () => {
 	it("keeps raw Error messages out of both admin pages", async () => {
 		const [usersPage, accessPage] = await Promise.all([
 			readFile(
-				new URL(
-					"../../src/features/users/pages/admin-list.tsx",
-					import.meta.url,
-				),
+				new URL("../../src/features/users/pages/admin.tsx", import.meta.url),
 				"utf8",
 			),
 			readFile(

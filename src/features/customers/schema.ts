@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { sensitiveProofSchema } from "#/features/auth/reauthentication-schema";
+import { userIdSchema } from "#/features/users/schema";
 
 export const customerStatuses = ["active", "disabled"] as const;
 
@@ -10,7 +11,7 @@ export const customerListSchema = z.object({
 });
 
 export const customerUpdateSchema = z.object({
-	id: z.string().uuid(),
+	id: userIdSchema,
 	name: z
 		.string()
 		.trim()
@@ -24,8 +25,8 @@ export const customerUpdateSchema = z.object({
 	status: z.enum(customerStatuses),
 });
 
-export const customerIdSchema = z.object({ id: z.string().uuid() });
+export const customerIdSchema = z.object({ id: userIdSchema });
 
 export const customerSensitiveActionSchema = sensitiveProofSchema.extend({
-	id: z.string().uuid(),
+	id: userIdSchema,
 });

@@ -17,96 +17,14 @@ export type AdminUserRecord = {
 	roles: string[];
 };
 
-export type ListUsersInput = {
-	pageIndex?: number;
-	pageSize?: number;
-	search?: string;
-};
-
 export type UserFormInput = {
 	id?: string;
 	name: string;
 	email: string;
 	enabled: boolean;
+	note?: string | null;
 	password?: string;
 };
-
-type UserListRow = {
-	id: string;
-	name: string;
-	email: string;
-	enabled: number;
-	email_verified: number;
-	created_at: number;
-	updated_at: number;
-	role_names: string;
-};
-
-export async function listUsers(db: AppDb, input: ListUsersInput = {}) {
-	const pageIndex = Math.max(0, input.pageIndex ?? 0);
-	const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 10));
-	const keyword = input.search?.trim() ?? "";
-	const administratorBoundary = `(
-		json_array_length(u.role_ids) = 0 OR EXISTS (
-		 SELECT 1 FROM json_each(u.role_ids) assigned
-		 JOIN roles assigned_role ON assigned_role.id = assigned.value
-		 WHERE assigned_role.name NOT IN ('customer', 'guest')
-		)
-	)`;
-	const where = keyword
-		? `WHERE ${administratorBoundary} AND (u.name LIKE ? OR u.email LIKE ?)`
-		: `WHERE ${administratorBoundary}`;
-	const pattern = `%${keyword}%`;
-	const bindings = keyword ? [pattern, pattern] : [];
-	const [countResult, rowsResult] = await db.$client.batch([
-		db.$client
-			.prepare(`SELECT COUNT(*) AS total FROM users u ${where}`)
-			.bind(...bindings),
-		db.$client
-			.prepare(`WITH page AS (
-		 SELECT u.id, u.name, u.email, u.enabled, u.email_verified,
-		  u.created_at, u.updated_at, u.role_ids
-		 FROM users u ${where}
-		 ORDER BY u.created_at DESC, u.id DESC LIMIT ? OFFSET ?
-		)
-		SELECT page.*,
-		 COALESCE((
-		  SELECT json_group_array(role_name) FROM (
-		   SELECT r.name AS role_name FROM json_each(page.role_ids) assigned
-		   JOIN roles r ON r.id = assigned.value
-		   WHERE r.name NOT IN ('customer', 'guest')
-		   ORDER BY r.name
-		  )
-			 ), '[]') AS role_names
-		FROM page ORDER BY page.created_at DESC, page.id DESC`)
-			.bind(...bindings, pageSize, pageIndex * pageSize),
-	]);
-	const count = countResult?.results?.[0] as { total: number } | undefined;
-	const rows = rowsResult as D1Result<UserListRow>;
-	return {
-		data: rows.results.map((row) => ({
-			id: row.id,
-			name: row.name,
-			email: row.email,
-			enabled: Boolean(row.enabled),
-			emailVerified: Boolean(row.email_verified),
-			createdAt: new Date(row.created_at).toISOString(),
-			updatedAt: new Date(row.updated_at).toISOString(),
-			roles: parseRoleNames(row.role_names),
-		})),
-		total: count?.total ?? 0,
-	};
-}
-
-function parseRoleNames(value: string) {
-	const parsed: unknown = JSON.parse(value);
-	if (
-		!Array.isArray(parsed) ||
-		!parsed.every((role) => typeof role === "string")
-	)
-		throw new Error("Invalid user role data");
-	return parsed;
-}
 
 export async function createUser(db: AppDb, input: UserFormInput) {
 	const now = new Date();
@@ -119,8 +37,9 @@ export async function createUser(db: AppDb, input: UserFormInput) {
 		db.$client
 			.prepare(
 				`INSERT INTO users
-				 (id, name, email, email_verified, image, enabled, created_at, updated_at)
-				 VALUES (?, ?, ?, 1, NULL, ?, ?, ?)
+				 (id, name, email, email_verified, image, enabled, customer_note,
+				  created_at, updated_at)
+				 VALUES (?, ?, ?, 1, NULL, ?, ?, ?, ?)
 				 ON CONFLICT(email) DO NOTHING`,
 			)
 			.bind(
@@ -128,6 +47,7 @@ export async function createUser(db: AppDb, input: UserFormInput) {
 				input.name.trim(),
 				email,
 				input.enabled ? 1 : 0,
+				input.note?.trim() || null,
 				createdAt,
 				createdAt,
 			),
@@ -167,14 +87,27 @@ export async function updateUser(
 	const email = normalizeEmail(input.email);
 	const nextPassword = input.password;
 	const now = Date.now();
+	const noteAssignment = input.note === undefined ? "" : "customer_note = ?,";
+	const noteBindings =
+		input.note === undefined ? [] : [input.note?.trim() || null];
 	const updated = await db.$client
 		.prepare(`UPDATE users SET name = ?, email = ?,
+			${noteAssignment}
 			${input.enabled ? "enabled = 1, disabled_at = NULL," : ""}
 			updated_at = CASE WHEN updated_at >= ? THEN updated_at + 1 ELSE ? END
 			WHERE id = ? AND NOT EXISTS (
 			 SELECT 1 FROM users other WHERE other.email = ? AND other.id <> ?
 			)`)
-		.bind(input.name.trim(), email, now, now, input.id, email, input.id)
+		.bind(
+			input.name.trim(),
+			email,
+			...noteBindings,
+			now,
+			now,
+			input.id,
+			email,
+			input.id,
+		)
 		.run();
 	if ((updated.meta.changes ?? 0) !== 1) {
 		const existing = await db.$client

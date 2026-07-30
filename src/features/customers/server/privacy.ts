@@ -8,10 +8,7 @@ export async function prepareCustomerDataDeletion(
 	const registered = await db
 		.prepare(
 			`SELECT id, id AS user_id, email, lower(email) AS normalized_email
-			 FROM users WHERE id = ? AND EXISTS (
-			  SELECT 1 FROM json_each(users.role_ids) assigned
-			  JOIN roles r ON r.id = assigned.value WHERE r.name = 'customer'
-			 ) LIMIT 1`,
+			 FROM users WHERE id = ? LIMIT 1`,
 		)
 		.bind(identityId)
 		.first<IdentityRow>();

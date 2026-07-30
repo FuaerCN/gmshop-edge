@@ -7,6 +7,13 @@ import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 import { hashPassword } from "better-auth/crypto";
 import {
+	authProviderSecretKey,
+	authProviderSecretPurpose,
+	authProviderSettingKeys,
+	initialStoredAuthProviders,
+	storedAuthProvidersSchema,
+} from "#/features/auth/provider-settings";
+import {
 	encryptAutomationCallbackSecret,
 	encryptBuildConfigSecret,
 	encryptBuildInput,
@@ -20,7 +27,7 @@ import {
 	createSupplierCredentialVault,
 	supplierCredentialFingerprint,
 } from "#/features/suppliers/secrets";
-import { encryptSecret } from "#/lib/secrets";
+import { decryptSecret, encryptSecret } from "#/lib/secrets";
 
 const databaseName = "gmshop-edge";
 const bucketName = "gmshop-edge-files";
@@ -28,6 +35,14 @@ const projectDirectory = fileURLToPath(new URL("..", import.meta.url));
 const now = Date.now();
 const scriptArgs = process.argv.slice(2);
 const withR2 = scriptArgs.includes("--with-r2");
+const force = scriptArgs.includes("--force");
+const telegramProviderId = "77700000-0000-4000-8000-000000000001";
+const telegramBotUserId = "777000";
+const telegramBotUsername = "gmshop_local_bot";
+const telegramBotToken =
+	"777000:AAH_local_Telegram_Mini_App_fixture_token_2026";
+const telegramUserId = "777000123";
+const telegramEmail = `${telegramUserId}@telegram.invalid`;
 const persistToIndex = scriptArgs.indexOf("--persist-to");
 const persistTo =
 	persistToIndex >= 0 ? scriptArgs[persistToIndex + 1]?.trim() : undefined;
@@ -36,7 +51,7 @@ if (persistToIndex >= 0 && !persistTo)
 
 if (!scriptArgs.includes("--local") || scriptArgs.includes("--remote"))
 	throw new Error(
-		"Acceptance fixtures are local-only. Run `bun run seed:acceptance:local`.",
+		"Acceptance fixtures are local-only. Run `bun run seed:local`.",
 	);
 
 const settings = await queryRows(
@@ -723,9 +738,206 @@ for (const catalog of supplierCatalogFixtures)
 		JSON.stringify(catalog),
 		86_400,
 	);
+const telegramUser = await seedTelegramMiniAppUser();
 console.log(
-	`Seeded ${paymentChannels.length} payment channels, ${products.length} example products, ${items.length} sellable items, ${customerPurchases.length} customer purchases, 3 disabled supplier accounts, 3 supplier bindings, 3 supplier orders, and ${supplierCatalogFixtures.length} supplier catalog snapshots for ${customerEmail}.${withR2 ? ` Added ${mediaFixtures.length} media objects, ${downloadFixtures.length} download objects, and one automation artifact.` : " Download products remain drafts; run the R2 variant or upload their files in the admin UI before publishing."}\nLocal root login: ${customerEmail} / ${customerPassword}`,
+	`Seeded ${paymentChannels.length} payment channels, ${products.length} example products, ${items.length} sellable items, ${customerPurchases.length} customer purchases, 3 disabled supplier accounts, 3 supplier bindings, 3 supplier orders, ${supplierCatalogFixtures.length} supplier catalog snapshots, and Telegram user ${String(telegramUser.name ?? telegramUserId)} for ${customerEmail}.${withR2 ? ` Added ${mediaFixtures.length} media objects, ${downloadFixtures.length} download objects, and one automation artifact.` : " Download products remain drafts; run with --with-r2 or upload their files in the admin UI before publishing."}\nLocal root login: ${customerEmail} / ${customerPassword}`,
 );
+
+async function seedTelegramMiniAppUser() {
+	const telegramSettings = await queryRows(
+		`SELECT key, value FROM system_settings WHERE key IN (
+		 ${q("runtime.data_encryption_secret")},
+		 ${q("runtime.better_auth_url")},
+		 ${q(authProviderSettingKeys.providers)},
+		 ${q(authProviderSettingKeys.revision)},
+		 ${q(authProviderSecretKey("telegram"))}
+		)`,
+	);
+	const encryptionSecret = readSetting(
+		telegramSettings,
+		"runtime.data_encryption_secret",
+	);
+	const localOrigin = localAuthOrigin(
+		readSetting(telegramSettings, "runtime.better_auth_url"),
+	);
+	const existingTelegramSecret = telegramSettings.find(
+		(row) => row.key === authProviderSecretKey("telegram"),
+	)?.value;
+	if (existingTelegramSecret && !force) {
+		const encrypted: unknown = JSON.parse(existingTelegramSecret);
+		const existingToken =
+			typeof encrypted === "string"
+				? await decryptSecret(
+						encrypted,
+						encryptionSecret,
+						authProviderSecretPurpose("telegram"),
+					).catch(() => null)
+				: null;
+		if (existingToken !== telegramBotToken)
+			throw new Error(
+				"Local Telegram credentials already exist. Re-run with `bun run seed:local -- --force` only if replacing them is intentional.",
+			);
+	}
+
+	const storedProviders = readJsonSetting(
+		telegramSettings,
+		authProviderSettingKeys.providers,
+		initialStoredAuthProviders,
+	);
+	const providers = storedAuthProvidersSchema.parse([
+		...storedProviders.filter((provider) => provider.providerId !== "telegram"),
+		{
+			id: telegramProviderId,
+			providerId: "telegram",
+			providerType: "social",
+			displayName: "Telegram",
+			icon: null,
+			clientId: telegramBotUserId,
+			scopes: ["openid", "profile"],
+			allowSignup: true,
+			enabled: true,
+			sortOrder: 20,
+		},
+	]);
+	const revision =
+		readJsonSetting(telegramSettings, authProviderSettingKeys.revision, 1) + 1;
+	const encryptedBotToken = await encryptSecret(
+		telegramBotToken,
+		encryptionSecret,
+		authProviderSecretPurpose("telegram"),
+	);
+
+	await executeSql(
+		`${upsertSetting(authProviderSettingKeys.providers, providers, false)}
+${upsertSetting(authProviderSettingKeys.revision, revision, false)}
+${upsertSetting(
+	authProviderSettingKeys.telegramBotUserId,
+	telegramBotUserId,
+	false,
+)}
+${upsertSetting(
+	authProviderSettingKeys.telegramUsername,
+	telegramBotUsername,
+	false,
+)}
+${upsertSetting(authProviderSettingKeys.telegramMiniAppEnabled, true, false)}
+${upsertSetting(authProviderSecretKey("telegram"), encryptedBotToken, true)}`,
+	);
+
+	const response = await fetch(
+		`${localOrigin}/api/auth/telegram/miniapp/signin`,
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				origin: localOrigin,
+				"cf-connecting-ip": "127.0.0.1",
+				"user-agent": "gmshop-local-telegram-mini-app-fixture",
+			},
+			body: JSON.stringify({ initData: await signedTelegramInitData() }),
+		},
+	);
+	if (!response.ok) {
+		const details = (await response.text()).slice(0, 500);
+		throw new Error(
+			`Telegram Mini App sign-in failed (${response.status}): ${details}`,
+		);
+	}
+	if (
+		!response.headers.get("set-cookie")?.includes("better-auth.session_token")
+	)
+		throw new Error("Telegram Mini App sign-in did not create a session.");
+
+	const [user] = await queryRows(
+		`SELECT u.id, u.name, u.email, u.telegram_id, u.telegram_username
+		 FROM users u
+		 JOIN accounts a ON a.user_id = u.id AND a.provider_id = 'telegram'
+		 WHERE u.email = ${q(telegramEmail)}
+		 LIMIT 1`,
+	);
+	if (!user)
+		throw new Error(
+			"Telegram Mini App sign-in completed without a canonical user.",
+		);
+	return user;
+}
+
+async function signedTelegramInitData() {
+	const values = {
+		auth_date: String(Math.floor(Date.now() / 1_000)),
+		chat_instance: "7770001234567890123",
+		chat_type: "private",
+		query_id: `AAH-local-${crypto.randomUUID()}`,
+		user: JSON.stringify({
+			id: Number(telegramUserId),
+			is_bot: false,
+			first_name: "Telegram",
+			last_name: "Local User",
+			username: "local_tg_user",
+			language_code: "zh-CN",
+			is_premium: true,
+			allows_write_to_pm: true,
+			photo_url: "https://telegram.org/img/t_logo.png",
+		}),
+	};
+	const check = Object.entries(values)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, value]) => `${key}=${value}`)
+		.join("\n");
+	const encoder = new TextEncoder();
+	const secret = await hmac(
+		encoder.encode("WebAppData"),
+		encoder.encode(telegramBotToken),
+	);
+	const parameters = new URLSearchParams(values);
+	parameters.set("hash", bytesToHex(await hmac(secret, encoder.encode(check))));
+	return parameters.toString();
+}
+
+async function hmac(
+	key: Uint8Array<ArrayBuffer>,
+	value: Uint8Array<ArrayBuffer>,
+) {
+	const cryptoKey = await crypto.subtle.importKey(
+		"raw",
+		key,
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign"],
+	);
+	return new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, value));
+}
+
+function bytesToHex(value: Uint8Array) {
+	return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(
+		"",
+	);
+}
+
+function upsertSetting(key: string, value: unknown, isSecret: boolean) {
+	return `INSERT INTO system_settings
+	 (key, value, is_secret, created_at, updated_at)
+	 VALUES (${q(key)}, ${q(JSON.stringify(value))}, ${isSecret ? 1 : 0}, ${now}, ${now})
+	 ON CONFLICT(key) DO UPDATE SET
+	  value = excluded.value,
+	  is_secret = excluded.is_secret,
+	  updated_at = excluded.updated_at;`;
+}
+
+function localAuthOrigin(value: string) {
+	const url = new URL(value);
+	if (!["localhost", "127.0.0.1"].includes(url.hostname))
+		throw new Error(
+			`Refusing to seed through non-local BETTER_AUTH_URL origin ${url.origin}.`,
+		);
+	return url.origin;
+}
+
+function readJsonSetting<T>(rows: QueryRow[], key: string, fallback: T): T {
+	const raw = rows.find((row) => row.key === key)?.value;
+	if (!raw) return fallback;
+	return JSON.parse(raw) as T;
+}
 
 function product(
 	suffix: number,
@@ -1819,7 +2031,9 @@ function requireValue(value: string | undefined, message: string) {
 	return value;
 }
 
-async function queryRows(command: string) {
+type QueryRow = Record<string, unknown> & { key?: string; value?: string };
+
+async function queryRows(command: string): Promise<QueryRow[]> {
 	const output = await runWrangler([
 		"d1",
 		"execute",
@@ -1829,16 +2043,11 @@ async function queryRows(command: string) {
 		"--command",
 		command,
 	]);
-	const result = JSON.parse(output) as Array<{
-		results?: Array<{ key?: string; value?: string }>;
-	}>;
+	const result = JSON.parse(output) as Array<{ results?: QueryRow[] }>;
 	return result.flatMap((entry) => entry.results ?? []);
 }
 
-function readSetting(
-	rows: Array<{ key?: string; value?: string }>,
-	key: string,
-) {
+function readSetting(rows: QueryRow[], key: string) {
 	const raw = rows.find((row) => row.key === key)?.value;
 	if (!raw) throw new Error(`Install the local store before seeding (${key}).`);
 	const parsed: unknown = JSON.parse(raw);

@@ -13,7 +13,10 @@ import { createTelegramOIDCProvider, telegram } from "better-auth-telegram";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import * as schema from "#/db/schema";
 import { storefrontCustomerRoleName } from "#/features/access/storefront-access";
-import { telegramIdentityEmail } from "#/features/auth/identity-email";
+import {
+	isInternalIdentityEmail,
+	telegramIdentityEmail,
+} from "#/features/auth/identity-email";
 import { assertAccountCanBeUnlinked } from "#/features/auth/server/provider-policy";
 import type { RuntimeAuthProvider } from "#/features/auth/server/provider-runtime";
 import {
@@ -219,6 +222,14 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 		},
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
+				if (ctx.path === "/sign-in/email") {
+					const email = (ctx.body as { email?: unknown } | undefined)?.email;
+					if (typeof email === "string" && isInternalIdentityEmail(email))
+						throw APIError.from("UNAUTHORIZED", {
+							code: "INVALID_EMAIL_OR_PASSWORD",
+							message: "Invalid email or password",
+						});
+				}
 				if (ctx.path === "/telegram/miniapp/signin") {
 					const origin = ctx.headers?.get("origin");
 					if (!origin || !trustedOrigins.includes(origin))

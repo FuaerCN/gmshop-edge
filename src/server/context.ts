@@ -1,11 +1,15 @@
 import { createServerOnlyFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-
+import { AccessDeniedError } from "#/features/access/server/access-cache";
 import {
 	type AdminSessionUser,
+	getAdminPermissions,
 	requireAdmin,
 } from "#/features/access/server/require-admin";
-import type { SystemPermission } from "#/features/access/system-rbac";
+import {
+	hasSystemPermission,
+	type SystemPermission,
+} from "#/features/access/system-rbac";
 import { getCloudflareEnv, getDb } from "./db.server";
 import { loadRequestRuntimeConfig } from "./runtime-config";
 
@@ -16,7 +20,25 @@ export const getAdminServerContext = createServerOnlyFn(
 
 		return {
 			request,
-			currentUser: currentUser as AdminSessionUser,
+			currentUser,
+			db: getDb(request),
+		};
+	},
+);
+
+export const getAdminServerContextAny = createServerOnlyFn(
+	async (permissions: readonly SystemPermission[]) => {
+		const request = getRequest();
+		const currentUser = await getAdminPermissions(request);
+		if (
+			!permissions.some((permission) =>
+				hasSystemPermission(currentUser.permissions, permission),
+			)
+		)
+			throw new AccessDeniedError(403);
+		return {
+			request,
+			currentUser,
 			db: getDb(request),
 		};
 	},

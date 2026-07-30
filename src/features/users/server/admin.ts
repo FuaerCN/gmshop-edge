@@ -2,12 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { normalizeRoleIds } from "#/features/access/rbac-json";
 import { systemPermission } from "#/features/access/system-rbac";
+import { userIdSchema } from "#/features/users/schema";
 import { replaceUserRolesAtomically } from "#/features/users/server/role-assignments";
 import {
 	createUser,
 	deleteUser,
-	type ListUsersInput,
-	listUsers,
 	setUserEnabled,
 	type UserFormInput,
 	updateUser,
@@ -16,32 +15,14 @@ import { DomainError } from "#/lib/domain-error";
 import { createAuditStatement } from "#/server/audit";
 import { getAdminServerContext } from "#/server/context";
 
-const listUsersInput = z.object({
-	pageIndex: z.number().int().min(0).optional(),
-	pageSize: z.number().int().min(1).max(100).optional(),
-	search: z.string().max(200).optional(),
-});
-
 const userInput = z.object({
-	id: z.uuid().optional(),
+	id: userIdSchema.optional(),
 	name: z.string().trim().min(2).max(100),
 	email: z.email(),
 	enabled: z.boolean(),
+	note: z.string().trim().max(2_000).optional(),
 	password: z.string().max(200).optional(),
 });
-
-export const listUsersFn = createServerFn({ method: "GET" })
-	.validator((input: ListUsersInput) => listUsersInput.parse(input))
-	.handler(async ({ data }) => {
-		const { db } = await getAdminServerContext(
-			systemPermission("users", "read"),
-		);
-		return listUsers(db, {
-			...(data.pageIndex === undefined ? {} : { pageIndex: data.pageIndex }),
-			...(data.pageSize === undefined ? {} : { pageSize: data.pageSize }),
-			...(data.search === undefined ? {} : { search: data.search }),
-		});
-	});
 
 export const saveUserFn = createServerFn({ method: "POST" })
 	.validator((input: UserFormInput) => userInput.parse(input))
@@ -53,6 +34,7 @@ export const saveUserFn = createServerFn({ method: "POST" })
 			name: data.name,
 			email: data.email,
 			enabled: data.enabled,
+			...(data.note === undefined ? {} : { note: data.note }),
 			...(data.password === undefined ? {} : { password: data.password }),
 		};
 		const result = data.id
@@ -67,6 +49,7 @@ export const saveUserFn = createServerFn({ method: "POST" })
 				name: data.name,
 				email: data.email.trim().toLowerCase(),
 				enabled: data.enabled,
+				...(data.note === undefined ? {} : { note: data.note }),
 				passwordChanged: Boolean(data.password),
 			},
 		}).run();
@@ -75,7 +58,7 @@ export const saveUserFn = createServerFn({ method: "POST" })
 
 export const setUserEnabledFn = createServerFn({ method: "POST" })
 	.validator((input: { id: string; enabled: boolean }) =>
-		z.object({ id: z.uuid(), enabled: z.boolean() }).parse(input),
+		z.object({ id: userIdSchema, enabled: z.boolean() }).parse(input),
 	)
 	.handler(async ({ data }) => {
 		const { currentUser, db, request } = await getAdminServerContext(
@@ -95,7 +78,9 @@ export const setUserEnabledFn = createServerFn({ method: "POST" })
 	});
 
 export const deleteUserFn = createServerFn({ method: "POST" })
-	.validator((input: { id: string }) => z.object({ id: z.uuid() }).parse(input))
+	.validator((input: { id: string }) =>
+		z.object({ id: userIdSchema }).parse(input),
+	)
 	.handler(async ({ data }) => {
 		const { currentUser, db, request } = await getAdminServerContext(
 			systemPermission("users", "delete"),
@@ -116,7 +101,7 @@ export const setUserRolesFn = createServerFn({ method: "POST" })
 	.validator((input: { userId: string; roleIds: string[] }) =>
 		z
 			.object({
-				userId: z.uuid(),
+				userId: userIdSchema,
 				roleIds: z.array(z.uuid()).max(32).transform(normalizeRoleIds),
 			})
 			.parse(input),
@@ -142,7 +127,8 @@ export const setUserRolesFn = createServerFn({ method: "POST" })
 				"Unknown or disabled role",
 			);
 		const result = await replaceUserRolesAtomically(db.$client, {
-			...data,
+			userId: data.userId,
+			roleIds: data.roleIds,
 			currentUserId: currentUser.id,
 		});
 		await createAuditStatement(db.$client, request, currentUser.id, {

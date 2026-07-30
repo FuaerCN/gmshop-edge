@@ -191,15 +191,15 @@ bun run build
 本地实例完成安装后，可写入幂等的验收数据：
 
 ```bash
-bun run seed:acceptance:local
-# 同时写入商品媒体、下载文件和自动化制品
-bun run seed:acceptance:local:r2
+bun run seed:local
 ```
 
 验收数据包含商品、库存、支付渠道、客户订单和权益，以及两个支持平台的 3 个供应商账号、
 3 个绑定、3 种供应订单状态和带有未导入 SKU 的本地目录快照，可直接验证“所有来源”
 列表与批量选择导入；订单与权益归属于安装时创建的
-`root@example.com`，并将其本地测试密码重置为 `root@example.com`，脚本不会另建测试用户。
+`root@example.com`，并将其本地测试密码重置为 `root@example.com`。
+该指令也会写入商品媒体、下载文件、自动化制品，并通过 Telegram Mini App 自动登录
+流程创建本地 Telegram 测试用户。
 供应商账号均为禁用状态，API 地址使用
 `.example.invalid`，自动同步也保持关闭，因此不会请求真实上游；如需联调，请在后台换成
 自己的凭据并显式启用。此脚本仅接受 `--local`，不会清空已有数据，也不能写入远程 D1。

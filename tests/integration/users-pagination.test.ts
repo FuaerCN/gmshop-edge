@@ -1,8 +1,6 @@
-import { drizzle } from "drizzle-orm/d1";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import * as schema from "#/db/schema";
-import { listUsers } from "#/features/users/server/users";
+import { listUsersWithCommerce } from "#/features/users/server/list";
 import {
 	createDatastoreCounters,
 	instrumentD1,
@@ -11,7 +9,6 @@ import { applyMigrations } from "./migrations";
 
 const adminRoleId = "00000000-0000-4000-8000-000000000030";
 const operatorRoleId = "00000000-0000-4000-8000-000000000031";
-const customerRoleId = "00000000-0000-4000-8000-000000000032";
 
 describe("admin users pagination", () => {
 	let miniflare: Miniflare;
@@ -38,11 +35,6 @@ describe("admin users pagination", () => {
 				.bind(operatorRoleId, "operator", 1, 1),
 			database
 				.prepare(
-					"INSERT INTO roles (id, name, built_in, created_at, updated_at) VALUES (?, 'customer', 1, ?, ?)",
-				)
-				.bind(customerRoleId, 1, 1),
-			database
-				.prepare(
 					"INSERT INTO users (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
 				)
 				.bind("user-1", "Alice", "alice@example.com", 1, 1),
@@ -63,11 +55,16 @@ describe("admin users pagination", () => {
 					3,
 					3,
 				),
-			database
-				.prepare(
-					"INSERT INTO users (id, name, email, role_ids, created_at, updated_at) VALUES ('customer-user', 'Buyer', 'buyer@example.com', ?, 4, 4)",
-				)
-				.bind(JSON.stringify([customerRoleId])),
+			database.prepare(
+				"INSERT INTO users (id, name, email, created_at, updated_at) VALUES ('user-4', 'Buyer', 'buyer@example.com', 4, 4)",
+			),
+			database.prepare(
+				`INSERT INTO accounts
+				 (id, user_id, account_id, provider_id, telegram_id,
+				  telegram_username, created_at, updated_at)
+				 VALUES ('account-4', 'user-4', '777000123', 'telegram',
+				  '777000123', 'local_tg_user', 4, 4)`,
+			),
 		]);
 	});
 
@@ -75,13 +72,24 @@ describe("admin users pagination", () => {
 
 	it("returns the page, exact total, and roles in one D1 batch", async () => {
 		const counters = createDatastoreCounters();
-		const db = drizzle(instrumentD1(database, counters), { schema });
-		const result = await listUsers(db, { pageIndex: 0, pageSize: 2 });
+		const result = await listUsersWithCommerce(
+			instrumentD1(database, counters),
+			{ pageIndex: 0, pageSize: 2, search: "" },
+		);
 
-		expect(result.total).toBe(3);
-		expect(result.data.map((user) => user.id)).toEqual(["user-3", "user-2"]);
-		expect(result.data[0]?.roles).toEqual(["admin", "operator"]);
-		expect(result.data.map((user) => user.id)).not.toContain("customer-user");
+		expect(result.total).toBe(4);
+		expect(result.data.map((user) => user.id)).toEqual(["user-4", "user-3"]);
+		expect(result.data[0]?.roles).toEqual([]);
+		expect(result.data[0]?.loginMethods).toEqual([
+			{
+				providerId: "telegram",
+				accountId: "777000123",
+				telegramId: "777000123",
+				telegramUsername: "local_tg_user",
+				createdAt: 4,
+			},
+		]);
+		expect(result.data[1]?.roles).toEqual(["admin", "operator"]);
 		expect(counters.d1Prepare).toBe(2);
 		expect(counters.d1Batch).toBe(1);
 		expect(counters.d1StatementAll).toBe(0);
@@ -90,10 +98,12 @@ describe("admin users pagination", () => {
 
 	it("keeps the exact total for an empty page without another round trip", async () => {
 		const counters = createDatastoreCounters();
-		const db = drizzle(instrumentD1(database, counters), { schema });
-		const result = await listUsers(db, { pageIndex: 9, pageSize: 2 });
+		const result = await listUsersWithCommerce(
+			instrumentD1(database, counters),
+			{ pageIndex: 9, pageSize: 2, search: "" },
+		);
 
-		expect(result).toEqual({ data: [], total: 3 });
+		expect(result).toEqual({ data: [], total: 4 });
 		expect(counters.d1Prepare).toBe(2);
 		expect(counters.d1Batch).toBe(1);
 		expect(counters.d1StatementAll).toBe(0);
@@ -101,8 +111,7 @@ describe("admin users pagination", () => {
 	});
 
 	it("applies search to the exact count", async () => {
-		const db = drizzle(database, { schema });
-		const result = await listUsers(db, {
+		const result = await listUsersWithCommerce(database, {
 			pageIndex: 0,
 			pageSize: 10,
 			search: "alice",

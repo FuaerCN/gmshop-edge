@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TelegramMiniAppAutoSignIn } from "#/features/auth/components/telegram-mini-app-auto-sign-in";
 
 const mocks = vi.hoisted(() => ({
 	expand: vi.fn(),
@@ -15,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 	refetch: vi.fn(),
 	requestFullscreen: vi.fn(),
 	retrieveRawInitData: vi.fn(),
+	sessionData: { value: null as { user: { id: string } } | null },
 	signInWithMiniApp: vi.fn(),
 	viewportMount: vi.fn(),
 }));
@@ -45,7 +45,7 @@ vi.mock("#/features/auth/auth-client", () => ({
 	authClient: {
 		signInWithMiniApp: mocks.signInWithMiniApp,
 		useSession: () => ({
-			data: null,
+			data: mocks.sessionData.value,
 			isPending: false,
 			refetch: mocks.refetch,
 		}),
@@ -54,8 +54,13 @@ vi.mock("#/features/auth/auth-client", () => ({
 
 describe("Telegram Mini App auto sign-in", () => {
 	let container: HTMLDivElement;
+	let TelegramMiniAppAutoSignIn: typeof import("#/features/auth/components/telegram-mini-app-auto-sign-in").TelegramMiniAppAutoSignIn;
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		vi.resetModules();
+		({ TelegramMiniAppAutoSignIn } = await import(
+			"#/features/auth/components/telegram-mini-app-auto-sign-in"
+		));
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
@@ -69,6 +74,7 @@ describe("Telegram Mini App auto sign-in", () => {
 		);
 		mocks.viewportMount.mockResolvedValue(undefined);
 		mocks.requestFullscreen.mockResolvedValue(undefined);
+		mocks.sessionData.value = null;
 	});
 
 	afterEach(() => {
@@ -109,6 +115,32 @@ describe("Telegram Mini App auto sign-in", () => {
 		expect(mocks.viewportMount).toHaveBeenCalledOnce();
 		expect(mocks.requestFullscreen).toHaveBeenCalledOnce();
 		expect(mocks.expand).not.toHaveBeenCalled();
+
+		await act(async () => root.unmount());
+	});
+
+	it("initializes fullscreen without signing in or linking an existing session", async () => {
+		mocks.sessionData.value = { user: { id: "credential-user" } };
+		const root = createRoot(container);
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+
+		await act(async () => {
+			root.render(
+				<QueryClientProvider client={queryClient}>
+					<TelegramMiniAppAutoSignIn />
+				</QueryClientProvider>,
+			);
+		});
+		await act(async () => {
+			await vi.waitFor(() => expect(mocks.ready).toHaveBeenCalledOnce());
+		});
+
+		expect(mocks.signInWithMiniApp).not.toHaveBeenCalled();
+		expect(mocks.refetch).not.toHaveBeenCalled();
+		expect(mocks.invalidate).not.toHaveBeenCalled();
+		expect(mocks.requestFullscreen).toHaveBeenCalledOnce();
 
 		await act(async () => root.unmount());
 	});

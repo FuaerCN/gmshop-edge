@@ -51,6 +51,7 @@ type NavigationEntry = {
 	url: string;
 	icon: typeof LayoutDashboard;
 	permission: SystemPermission;
+	permissions: readonly SystemPermission[];
 	activePrefixes?: readonly string[];
 };
 
@@ -72,9 +73,22 @@ const entry = (
 	title: () => string,
 	url: string,
 	icon: typeof LayoutDashboard,
-	permission: SystemPermission,
+	permission: SystemPermission | readonly SystemPermission[],
 	activePrefixes?: readonly string[],
-): NavigationEntry => ({ id, title, url, icon, permission, activePrefixes });
+): NavigationEntry => {
+	const permissions = Array.isArray(permission) ? permission : [permission];
+	const primaryPermission = permissions[0];
+	if (!primaryPermission) throw new Error("Navigation permission is required");
+	return {
+		id,
+		title,
+		url,
+		icon,
+		permission: primaryPermission,
+		permissions,
+		activePrefixes,
+	};
+};
 
 export const navigationGroups: readonly NavigationGroup[] = [
 	{
@@ -212,20 +226,6 @@ export const navigationGroups: readonly NavigationGroup[] = [
 		title: () => m.nav_group_customer_growth(),
 		modules: [
 			{
-				id: "customers",
-				title: () => m.nav_customers(),
-				icon: Users,
-				entries: [
-					entry(
-						"customers",
-						() => m.nav_customers(),
-						"/admin/customers",
-						Users,
-						systemPermission("customers", "read"),
-					),
-				],
-			},
-			{
 				id: "coupons",
 				title: () => m.nav_coupons(),
 				icon: TicketPercent,
@@ -311,7 +311,10 @@ export const navigationGroups: readonly NavigationGroup[] = [
 						() => m.nav_user_management(),
 						"/admin/access/users",
 						Users,
-						systemPermission("users", "read"),
+						[
+							systemPermission("users", "read"),
+							systemPermission("customers", "read"),
+						],
 					),
 					entry(
 						"roles",
@@ -439,9 +442,7 @@ export function visibleModuleEntries(
 		.flatMap((group) => group.modules)
 		.find((candidate) => candidate.id === moduleId);
 	return (
-		module?.entries.filter((item) =>
-			hasSystemPermission(permissions, item.permission),
-		) ?? []
+		module?.entries.filter((item) => canAccessEntry(item, permissions)) ?? []
 	);
 }
 
@@ -451,7 +452,7 @@ export function firstAllowedAdminUrl(
 	return navigationGroups
 		.flatMap((group) => group.modules)
 		.flatMap((module) => module.entries)
-		.find((item) => hasSystemPermission(permissions, item.permission))?.url;
+		.find((item) => canAccessEntry(item, permissions))?.url;
 }
 
 export function systemSidebarData(
@@ -462,7 +463,7 @@ export function systemSidebarData(
 		const items: SidebarData["navGroups"][number]["items"] = [];
 		for (const module of group.modules) {
 			const visible = module.entries.filter((candidate) =>
-				hasSystemPermission(permissions, candidate.permission),
+				canAccessEntry(candidate, permissions),
 			);
 			if (!visible.length) continue;
 			if (visible.length === 1) {
@@ -509,16 +510,23 @@ export function permissionForAdminPath(
 ): SystemPermission | undefined {
 	const normalized =
 		pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+	return matchingEntries(normalized)[0]?.permissions[0];
+}
+
+function matchingEntries(pathname: string) {
 	return navigationGroups
 		.flatMap((group) => group.modules)
 		.flatMap((module) => module.entries)
 		.filter(
 			(candidate) =>
-				normalized === candidate.url ||
+				pathname === candidate.url ||
 				(candidate.url !== "/admin" &&
-					normalized.startsWith(`${candidate.url}/`)),
+					pathname.startsWith(`${candidate.url}/`)) ||
+				candidate.activePrefixes?.some(
+					(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+				),
 		)
-		.sort((left, right) => right.url.length - left.url.length)[0]?.permission;
+		.sort((left, right) => right.url.length - left.url.length);
 }
 
 export function canAccessAdminPath(
@@ -527,16 +535,24 @@ export function canAccessAdminPath(
 ) {
 	const normalized =
 		pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-	const permission = permissionForAdminPath(normalized);
-	if (permission) return hasSystemPermission(permissions, permission);
+	const entries = matchingEntries(normalized);
+	if (entries.length)
+		return entries.some((candidate) => canAccessEntry(candidate, permissions));
 	const module = navigationGroups
 		.flatMap((group) => group.modules)
 		.find((candidate) =>
 			candidate.entries.every((item) => item.url.startsWith(`${normalized}/`)),
 		);
 	return module
-		? module.entries.some((item) =>
-				hasSystemPermission(permissions, item.permission),
-			)
+		? module.entries.some((item) => canAccessEntry(item, permissions))
 		: false;
+}
+
+function canAccessEntry(
+	entry: NavigationEntry,
+	permissions: readonly SystemPermissionGrant[],
+) {
+	return entry.permissions.some((permission) =>
+		hasSystemPermission(permissions, permission),
+	);
 }
