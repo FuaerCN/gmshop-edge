@@ -11,6 +11,7 @@ import { TooltipProvider } from "#/components/ui/tooltip";
 import { DirectionProvider } from "#/context/direction-provider";
 import { SiteBrandProvider } from "#/context/site-brand-provider";
 import { ThemeProvider } from "#/context/theme-provider";
+import { TelegramMiniAppAutoSignIn } from "#/features/auth/components/telegram-mini-app-auto-sign-in";
 import { GeneralError } from "#/features/errors/general-error";
 import { NotFoundError } from "#/features/errors/not-found-error";
 import { getSiteBrandFn } from "#/features/settings/server/site-brand-entry";
@@ -126,6 +127,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			</head>
 			<body className="antialiased wrap-anywhere">
 				<RouteFocusManager />
+				<TelegramMiniAppAutoSignIn />
 				<SiteBrandProvider brand={brand}>
 					<ThemeProvider>
 						<DirectionProvider>

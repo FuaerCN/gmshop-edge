@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Loader2, LogIn } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Input, Password } from "#/components/pro/base/fields/input";
@@ -211,10 +211,6 @@ export function UserAuthForm({
 			<Button asChild variant="link">
 				<Link to="/register">{m.auth_create_account()}</Link>
 			</Button>
-			<TelegramMiniAppSignIn
-				providers={providers.data ?? []}
-				redirectTo={redirectTo}
-			/>
 		</div>
 	);
 
@@ -241,39 +237,4 @@ export function UserAuthForm({
 		}
 		throw new Error("unsupported_auth_provider");
 	}
-}
-
-function TelegramMiniAppSignIn({
-	providers,
-	redirectTo,
-}: {
-	providers: Array<{
-		providerId: string;
-		providerType: string;
-		telegramMiniAppEnabled: boolean;
-	}>;
-	redirectTo: string;
-}) {
-	const navigate = useNavigate();
-	const provider = providers.find(
-		(item) => item.providerId === "telegram" && item.telegramMiniAppEnabled,
-	);
-	useEffect(() => {
-		const telegram = (
-			window as typeof window & {
-				Telegram?: { WebApp?: { initData?: string } };
-			}
-		).Telegram?.WebApp;
-		if (!provider || !telegram?.initData) return;
-		const controller = new AbortController();
-		void authClient
-			.signInWithMiniApp(telegram.initData, {
-				signal: controller.signal,
-			})
-			.then((result) => {
-				if (!result.error) void navigate({ to: redirectTo, replace: true });
-			});
-		return () => controller.abort();
-	}, [navigate, provider, redirectTo]);
-	return null;
 }

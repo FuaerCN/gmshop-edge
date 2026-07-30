@@ -330,7 +330,13 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 					]
 				: []),
 			...(telegramOidcProvider?.clientId && telegramOidcProvider.clientSecret
-				? [telegramOidcBetterAuthPlugin(telegramOidcProvider, db.$client)]
+				? [
+						telegramOidcBetterAuthPlugin(
+							telegramOidcProvider,
+							db.$client,
+							new URL(env.BETTER_AUTH_URL).origin,
+						),
+					]
 				: []),
 			enabledUsersPlugin(),
 			tanstackStartCookies(),
@@ -382,6 +388,7 @@ async function reserveTelegramMiniAppReplay(
 function telegramOidcBetterAuthPlugin(
 	provider: RuntimeAuthProvider,
 	database: D1Database,
+	authOrigin: string,
 ) {
 	const baseProvider = createTelegramOIDCProvider(provider.clientSecret ?? "", {
 		clientId: provider.clientId ?? "",
@@ -398,8 +405,14 @@ function telegramOidcBetterAuthPlugin(
 		) {
 			if (!input.codeVerifier)
 				throw new Error("Telegram OIDC requires a PKCE verifier");
+			const redirectOrigin = new URL(input.redirectURI).origin;
+			if (redirectOrigin !== authOrigin)
+				throw new Error(
+					"Telegram OIDC callback origin must match the authentication origin",
+				);
 			const url = await baseProvider.createAuthorizationURL(input);
 			url.searchParams.set("nonce", await oidcNonce(input.codeVerifier));
+			url.searchParams.set("origin", redirectOrigin);
 			return url;
 		},
 		async validateAuthorizationCode(
