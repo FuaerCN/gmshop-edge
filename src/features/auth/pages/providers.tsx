@@ -14,7 +14,7 @@ import { ConfigurationLogoField } from "#/components/configuration-logo-field";
 import { ProButton } from "#/components/pro/base/button";
 import { formBooleanValue, ModalForm } from "#/components/pro/form";
 import { ProTable } from "#/components/pro/table";
-import { Badge } from "#/components/ui/badge";
+import { AuthProviderLogo } from "#/components/provider-logo";
 import { Button } from "#/components/ui/button";
 import {
 	DropdownMenu,
@@ -25,8 +25,9 @@ import {
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
 import { Switch } from "#/components/ui/switch";
+import { authProviderErrorMessage } from "#/features/auth/error-message";
 import { authProviderPresets } from "#/features/auth/provider-presets";
-import { authProviderTypes } from "#/features/auth/provider-schema";
+import type { authProviderTypes } from "#/features/auth/provider-schema";
 import {
 	deleteAuthProviderFn,
 	listAuthProvidersFn,
@@ -102,9 +103,7 @@ export function AuthProvidersPage() {
 					<Switch
 						aria-label={`${m.common_enabled()} · ${row.original.displayName}`}
 						checked={row.original.enabled}
-						disabled={
-							row.original.providerId === "credential" || toggle.isPending
-						}
+						disabled={toggle.isPending}
 						onCheckedChange={(enabled) =>
 							toggle.mutate({ data: { id: row.original.id, enabled } })
 						}
@@ -117,18 +116,13 @@ export function AuthProvidersPage() {
 				meta: { search: true },
 				cell: ({ row }) => (
 					<div className="flex items-center gap-3">
-						{row.original.icon?.startsWith("/") ? (
-							<img
-								alt=""
-								className="size-9 rounded-lg object-contain"
-								src={row.original.icon}
-							/>
-						) : null}
+						<AuthProviderLogo
+							className="size-9 rounded-lg"
+							logoUrl={row.original.icon}
+							providerId={row.original.providerId}
+						/>
 						<div>
 							<strong className="block">{row.original.displayName}</strong>
-							<span className="text-muted-foreground text-xs">
-								{row.original.providerId}
-							</span>
 							{row.original.callbackUrl ? (
 								<code className="mt-1 block max-w-80 truncate text-muted-foreground text-xs">
 									{row.original.callbackUrl}
@@ -136,15 +130,6 @@ export function AuthProvidersPage() {
 							) : null}
 						</div>
 					</div>
-				),
-			},
-			{
-				accessorKey: "providerType",
-				header: m.auth_provider_type(),
-				cell: ({ row }) => (
-					<Badge variant="outline">
-						{providerTypeLabel(row.original.providerType)}
-					</Badge>
 				),
 			},
 			{
@@ -189,14 +174,17 @@ export function AuthProvidersPage() {
 		[toggle.isPending, toggle.mutate],
 	);
 
-	async function submit(values: Record<string, unknown>, provider?: Provider) {
+	async function submit(
+		values: Record<string, unknown>,
+		provider?: Provider,
+		preset?: ProviderPreset,
+	) {
+		const source = provider ?? preset;
 		await save.mutateAsync({
 			data: {
 				id: provider?.id,
-				providerId: String(values.providerId ?? ""),
-				providerType: String(
-					values.providerType ?? "social",
-				) as (typeof authProviderTypes)[number],
+				providerId: source?.providerId ?? "",
+				providerType: source?.providerType ?? "social",
 				displayName: String(values.displayName ?? ""),
 				clientId: optionalString(values.clientId),
 				clientSecret: optionalString(values.clientSecret) ?? undefined,
@@ -205,10 +193,9 @@ export function AuthProvidersPage() {
 				telegramBotToken: optionalString(values.telegramBotToken) ?? undefined,
 				scopes: Array.isArray(values.scopes) ? values.scopes.map(String) : [],
 				allowSignup: formBooleanValue(values.allowSignup),
-				enabled:
-					(provider?.providerId ?? values.providerId) === "credential"
-						? true
-						: formBooleanValue(values.enabled),
+				passwordLoginEnabled: formBooleanValue(values.passwordLoginEnabled),
+				emailOtpEnabled: formBooleanValue(values.emailOtpEnabled),
+				enabled: formBooleanValue(values.enabled),
 				sortOrder: provider?.sortOrder ?? 100,
 			},
 		});
@@ -239,6 +226,10 @@ export function AuthProvidersPage() {
 											)}
 											onClick={() => setCreating(preset)}
 										>
+											<AuthProviderLogo
+												className="size-4"
+												providerId={preset.providerId}
+											/>
 											{preset.displayName}
 										</DropdownMenuItem>
 									))}
@@ -275,9 +266,9 @@ export function AuthProvidersPage() {
 					title={`${m.auth_provider_new()} · ${creating.displayName}`}
 					schema={providerFormSchema({ preset: creating })}
 					initialValues={providerPresetValues(creating)}
-					onFinish={(values) => submit(values)}
-					onFinishFailed={showAuthProviderError}
+					onFinish={(values) => submit(values, undefined, creating)}
 					modalClassName="sm:max-w-2xl"
+					fieldsClassName="grid gap-4 space-y-0 sm:grid-cols-2"
 				/>
 			) : null}
 			{editing ? (
@@ -293,8 +284,8 @@ export function AuthProvidersPage() {
 					})}
 					initialValues={providerValues(editing)}
 					onFinish={(values) => submit(values, editing)}
-					onFinishFailed={showAuthProviderError}
 					modalClassName="sm:max-w-2xl"
+					fieldsClassName="grid gap-4 space-y-0 sm:grid-cols-2"
 				>
 					<ConfigurationLogoField
 						id={editing.id}
@@ -426,31 +417,17 @@ function providerFormSchema({
 }) {
 	const type = preset?.providerType ?? providerType;
 	const resolvedProviderId = preset?.providerId ?? providerId;
-	const usesClientCredentials = type !== "email_password";
+	const usesClientCredentials = type === "social";
 	const usesSeparateClientSecret =
 		usesClientCredentials && resolvedProviderId !== "telegram";
 	const scopeOptions = providerScopeOptions(resolvedProviderId);
 	const usesScopes = type === "social" && scopeOptions.length > 0;
 	return [
-		{ name: "displayName", label: m.common_name(), required: true },
 		{
-			name: "providerId",
-			label: m.auth_provider_id(),
+			name: "displayName",
+			label: m.common_name(),
 			required: true,
-			disabled: true,
-		},
-		{
-			name: "providerType",
-			label: m.auth_provider_type(),
-			valueType: "select" as const,
-			required: true,
-			disabled: true,
-			fieldProps: {
-				options: authProviderTypes.map((value) => ({
-					value,
-					label: providerTypeLabel(value),
-				})),
-			},
+			formItemProps: { className: "sm:col-span-2" },
 		},
 		...(callbackUrl
 			? [
@@ -458,6 +435,7 @@ function providerFormSchema({
 						name: "callbackUrl",
 						label: m.auth_provider_callback_url(),
 						disabled: true,
+						formItemProps: { className: "sm:col-span-2" },
 					},
 				]
 			: []),
@@ -495,12 +473,14 @@ function providerFormSchema({
 						description: preset
 							? m.telegram_add_bot_description()
 							: m.telegram_token_preserve_description(),
+						formItemProps: { className: "sm:col-span-2" },
 					},
 					{
 						name: "telegramMiniAppEnabled",
 						label: m.auth_telegram_mini_app_enabled(),
 						valueType: "switch" as const,
 						description: m.auth_telegram_mini_app_enabled_description(),
+						formItemProps: { className: "sm:col-span-2" },
 					},
 				]
 			: []),
@@ -520,6 +500,22 @@ function providerFormSchema({
 									resolvedProviderId === "telegram" && scope === "openid",
 							})),
 						},
+						formItemProps: { className: "sm:col-span-2" },
+					},
+				]
+			: []),
+		...(type === "email"
+			? [
+					{
+						name: "passwordLoginEnabled",
+						label: m.auth_email_password_login(),
+						valueType: "switch" as const,
+					},
+					{
+						name: "emailOtpEnabled",
+						label: m.auth_email_otp_login(),
+						valueType: "switch" as const,
+						description: m.auth_email_otp_login_description(),
 					},
 				]
 			: []),
@@ -528,15 +524,11 @@ function providerFormSchema({
 			label: m.auth_provider_allow_signup(),
 			valueType: "switch" as const,
 		},
-		...(resolvedProviderId === "credential"
-			? []
-			: [
-					{
-						name: "enabled",
-						label: m.common_enabled(),
-						valueType: "switch" as const,
-					},
-				]),
+		{
+			name: "enabled",
+			label: m.common_enabled(),
+			valueType: "switch" as const,
+		},
 	];
 }
 
@@ -550,6 +542,8 @@ function providerPresetValues(preset: ProviderPreset) {
 		telegramBotToken: "",
 		scopes: [...preset.scopes],
 		allowSignup: true,
+		passwordLoginEnabled: false,
+		emailOtpEnabled: false,
 		enabled: false,
 	};
 }
@@ -567,6 +561,8 @@ function providerValues(provider: Provider) {
 		telegramBotToken: "",
 		scopes: provider.scopes,
 		allowSignup: provider.allowSignup,
+		passwordLoginEnabled: provider.passwordLoginEnabled,
+		emailOtpEnabled: provider.emailOtpEnabled,
 		enabled: provider.enabled,
 	};
 }
@@ -590,15 +586,11 @@ function scopeDescription(scope: string) {
 	}[scope];
 }
 
-function providerTypeLabel(type: string) {
-	return type.replaceAll("_", " ");
-}
-
 function optionalString(value: unknown) {
 	const normalized = String(value ?? "").trim();
 	return normalized || null;
 }
 
-function showAuthProviderError() {
-	toast.error(m.auth_signInFailed());
+function showAuthProviderError(error: unknown) {
+	toast.error(authProviderErrorMessage(error));
 }

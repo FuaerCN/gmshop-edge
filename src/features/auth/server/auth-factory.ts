@@ -42,8 +42,8 @@ export type AuthEnv = {
 
 export function createAuth(db: AppDb, env: AuthEnv) {
 	const authProviders = env.AUTH_PROVIDERS ?? [defaultCredentialProvider];
-	const credential = authProviders.find(
-		(provider) => provider.providerType === "email_password",
+	const emailProvider = authProviders.find(
+		(provider) => provider.providerType === "email",
 	);
 	const telegramOidcProvider = authProviders.find(
 		(provider) =>
@@ -178,8 +178,9 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 			},
 		},
 		emailAndPassword: {
-			enabled: true,
-			disableSignUp: !credential?.allowSignup,
+			enabled: Boolean(emailProvider?.passwordLoginEnabled),
+			disableSignUp:
+				!emailProvider?.passwordLoginEnabled || !emailProvider.allowSignup,
 			minPasswordLength: 12,
 			requireEmailVerification:
 				emailDeliveryEnabled && env.REQUIRE_EMAIL_VERIFICATION === true,
@@ -213,7 +214,9 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 			max: 20,
 			customRules: {
 				"/sign-in/email": { window: 60, max: 5 },
+				"/sign-in/email-otp": { window: 60, max: 5 },
 				"/sign-up/email": { window: 60, max: 5 },
+				"/email-otp/send-verification-otp": { window: 60, max: 3 },
 				"/email-otp/request-password-reset": { window: 60, max: 3 },
 				"/email-otp/reset-password": { window: 60, max: 5 },
 				"/send-verification-email": { window: 60, max: 3 },
@@ -222,6 +225,15 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 		},
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
+				if (
+					(ctx.path === "/sign-in/email-otp" ||
+						ctx.path === "/email-otp/send-verification-otp") &&
+					!emailProvider?.emailOtpEnabled
+				)
+					throw APIError.from("BAD_REQUEST", {
+						code: "EMAIL_OTP_FLOW_DISABLED",
+						message: "Email code sign-in is unavailable",
+					});
 				if (ctx.path === "/sign-in/email") {
 					const email = (ctx.body as { email?: unknown } | undefined)?.email;
 					if (typeof email === "string" && isInternalIdentityEmail(email))
@@ -319,6 +331,18 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 							rateLimit: { window: 60, max: 3 },
 							storeOTP: "hashed",
 							sendVerificationOTP: async ({ email, otp, type }) => {
+								if (type === "sign-in" && emailProvider?.emailOtpEnabled) {
+									const locale = await loadUserEmailLocale(db.$client, email);
+									await enqueueConfiguredEmailNotification(db.$client, {
+										event: "auth.email_otp_sign_in",
+										idempotencyKey: `auth-email-otp-sign-in:${await tokenDigest(`${email}:${otp}`)}`,
+										to: email,
+										locale,
+										subject: m.auth_email_otp_subject({ siteName }, { locale }),
+										text: m.auth_email_otp_text({ otp }, { locale }),
+									});
+									return;
+								}
 								if (type !== "forget-password")
 									throw APIError.from("BAD_REQUEST", {
 										code: "EMAIL_OTP_FLOW_DISABLED",
@@ -593,12 +617,14 @@ async function tokenDigest(token: string) {
 const defaultCredentialProvider = {
 	id: "auth-provider-credential",
 	providerId: "credential",
-	providerType: "email_password",
-	displayName: "Email and password",
+	providerType: "email",
+	displayName: "Email",
 	clientId: null,
 	clientSecret: null,
 	scopes: [],
 	allowSignup: false,
+	passwordLoginEnabled: true,
+	emailOtpEnabled: false,
 	revision: 1,
 	telegramBotUserId: null,
 	telegramBotUsername: null,
@@ -646,6 +672,7 @@ function securityAuditAction(path: string) {
 		{
 			"/telegram/miniapp/signin": "auth.telegram_mini_app_signed_in",
 			"/sign-in/email": "auth.signed_in",
+			"/sign-in/email-otp": "auth.email_otp_signed_in",
 			"/sign-up/email": "auth.signed_up",
 			"/sign-out": "auth.signed_out",
 			"/change-password": "auth.password_changed",
@@ -689,6 +716,7 @@ function authenticationFailureAction(path: string) {
 	return (
 		{
 			"/sign-in/email": "auth.sign_in_failed",
+			"/sign-in/email-otp": "auth.email_otp_sign_in_failed",
 			"/change-email": "auth.email_change_failed",
 			"/telegram/miniapp/signin": "auth.telegram_mini_app_failed",
 		}[path] ?? null

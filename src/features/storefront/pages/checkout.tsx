@@ -19,6 +19,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Checkbox as ProCheckbox } from "#/components/pro/base/fields/checkbox";
+import { PaymentProviderLogo } from "#/components/provider-logo";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
@@ -509,13 +510,11 @@ export function StorefrontCheckoutPage() {
 												type="radio"
 												value={channel.id}
 											/>
-											{channel.logoUrl ? (
-												<img
-													alt=""
-													className="size-8 rounded-lg object-contain"
-													src={channel.logoUrl}
-												/>
-											) : null}
+											<PaymentProviderLogo
+												className="size-8 rounded-lg"
+												logoUrl={channel.logoUrl}
+												providerId={channel.provider}
+											/>
 											<span className="font-medium leading-snug">
 												{channel.name}
 											</span>

@@ -9,12 +9,14 @@ import {
 export type RuntimeAuthProvider = {
 	id: string;
 	providerId: string;
-	providerType: "email_password" | "social";
+	providerType: "email" | "social";
 	displayName: string;
 	clientId: string | null;
 	clientSecret: string | null;
 	scopes: string[];
 	allowSignup: boolean;
+	passwordLoginEnabled?: boolean;
+	emailOtpEnabled?: boolean;
 	revision: number;
 	telegramBotUserId: string | null;
 	telegramBotUsername: string | null;
@@ -47,9 +49,7 @@ export async function loadRuntimeAuthProviders(
 	);
 	return Promise.all(
 		settings.providers
-			.filter(
-				(provider) => provider.providerId === "credential" || provider.enabled,
-			)
+			.filter((provider) => provider.enabled)
 			.sort(
 				(left, right) =>
 					left.sortOrder - right.sortOrder || left.id.localeCompare(right.id),
@@ -79,6 +79,8 @@ export async function loadRuntimeAuthProviders(
 					clientSecret: secret,
 					scopes: provider.scopes,
 					allowSignup: provider.allowSignup,
+					passwordLoginEnabled: provider.passwordLoginEnabled,
+					emailOtpEnabled: provider.emailOtpEnabled,
 					revision: settings.revision,
 					telegramBotUserId: telegram ? settings.telegram.botUserId : null,
 					telegramBotUsername: telegram ? settings.telegram.username : null,

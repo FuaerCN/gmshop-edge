@@ -23,6 +23,8 @@ export const storedAuthProviderSchema = z
 		clientId: z.string().max(500).nullable(),
 		scopes: z.array(z.string().min(1).max(100)).max(20),
 		allowSignup: z.boolean(),
+		passwordLoginEnabled: z.boolean().default(true),
+		emailOtpEnabled: z.boolean().default(false),
 		enabled: z.boolean(),
 		sortOrder: z.number().int().min(0).max(1_000_000),
 	})
@@ -81,12 +83,14 @@ export const initialStoredAuthProviders: StoredAuthProvider[] = [
 	{
 		id: "auth-provider-credential",
 		providerId: "credential",
-		providerType: "email_password",
-		displayName: "Email and password",
+		providerType: "email",
+		displayName: "Email",
 		icon: null,
 		clientId: null,
 		scopes: [],
 		allowSignup: true,
+		passwordLoginEnabled: true,
+		emailOtpEnabled: false,
 		enabled: true,
 		sortOrder: 10,
 	},
@@ -106,8 +110,10 @@ export function parseAuthProviderSettings(
 	const values = new Map(rows.map((row) => [row.key, parseJson(row.value)]));
 	return {
 		providers: storedAuthProvidersSchema.parse(
-			values.get(authProviderSettingKeys.providers) ??
-				initialStoredAuthProviders,
+			normalizeLegacyEmailProvider(
+				values.get(authProviderSettingKeys.providers) ??
+					initialStoredAuthProviders,
+			),
 		),
 		revision: z
 			.number()
@@ -133,6 +139,63 @@ export function parseAuthProviderSettings(
 				),
 		},
 	};
+}
+
+function normalizeLegacyEmailProvider(value: unknown) {
+	if (!Array.isArray(value)) return value;
+	const credential = value.find(
+		(provider) =>
+			isRecord(provider) &&
+			(provider.providerId === "credential" ||
+				provider.providerType === "email_password"),
+	);
+	const emailOtp = value.find(
+		(provider) =>
+			isRecord(provider) &&
+			(provider.providerId === "email-otp" ||
+				provider.providerType === "email_otp"),
+	);
+	if (!credential && !emailOtp) return value;
+	const source = credential ?? emailOtp;
+	if (!isRecord(source)) return value;
+	return [
+		{
+			...source,
+			id: "auth-provider-credential",
+			providerId: "credential",
+			providerType: "email",
+			displayName:
+				source.displayName === "Email and password" ||
+				typeof source.displayName !== "string"
+					? "Email"
+					: source.displayName,
+			passwordLoginEnabled: credential
+				? readBoolean(credential.passwordLoginEnabled, true)
+				: false,
+			emailOtpEnabled: emailOtp
+				? readBoolean(emailOtp.emailOtpEnabled, true)
+				: readBoolean(source.emailOtpEnabled, false),
+			enabled:
+				readBoolean(credential?.enabled, false) ||
+				readBoolean(emailOtp?.enabled, false),
+		},
+		...value.filter(
+			(provider) =>
+				!isRecord(provider) ||
+				(provider.providerId !== "credential" &&
+					provider.providerId !== "email-otp" &&
+					provider.providerType !== "email_password" &&
+					provider.providerType !== "email_otp"),
+		),
+	];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function readBoolean(value: unknown, fallback: boolean) {
+	return typeof value === "boolean" ? value : fallback;
 }
 
 function parseJson(value: string) {

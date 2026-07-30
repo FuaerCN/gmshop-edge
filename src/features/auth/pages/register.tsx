@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Loader2, UserPlus } from "lucide-react";
 import { useState } from "react";
@@ -11,12 +12,21 @@ import { Button } from "#/components/ui/button";
 import { Label } from "#/components/ui/label";
 import { authClient } from "#/features/auth/auth-client";
 import { signInErrorMessage } from "#/features/auth/error-message";
+import { listPublicAuthProvidersFn } from "#/features/auth/server/provider-admin";
 import { m } from "#/paraglide/messages";
 import { getLocale } from "#/paraglide/runtime";
 
 export function RegisterPage() {
 	const navigate = useNavigate();
 	const [pending, setPending] = useState(false);
+	const providers = useQuery({
+		queryKey: ["public", "auth-providers"],
+		queryFn: () => listPublicAuthProvidersFn(),
+		staleTime: 30_000,
+	});
+	const credential = providers.data?.find(
+		(provider) => provider.providerType === "email",
+	);
 	const schema = z
 		.object({
 			name: z.string().trim().min(1).max(120),
@@ -57,6 +67,28 @@ export function RegisterPage() {
 			void navigate({ to: "/verify-email-sent", replace: true });
 		},
 	});
+	if (providers.isPending)
+		return (
+			<div className="grid min-h-40 place-items-center">
+				<Loader2
+					aria-label={m.common_loading()}
+					className="animate-spin text-muted-foreground"
+				/>
+			</div>
+		);
+	if (!credential?.passwordLoginEnabled || !credential.allowSignup)
+		return (
+			<div className="grid gap-4 text-center">
+				<p className="text-muted-foreground">
+					{m.auth_email_sign_in_unavailable()}
+				</p>
+				<Button asChild variant="link">
+					<Link search={{ redirect: undefined }} to="/sign-in">
+						{m.auth_have_account()}
+					</Link>
+				</Button>
+			</div>
+		);
 	return (
 		<div className="w-full space-y-6">
 			<div className="space-y-2">

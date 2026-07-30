@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
 import { ModalForm, type ProSchemaFormItem } from "#/components/pro/form";
 import { ProTable } from "#/components/pro/table";
+import { EmailProviderLogo } from "#/components/provider-logo";
 import { Badge } from "#/components/ui/badge";
 import {
 	DropdownMenu,
@@ -106,8 +107,16 @@ export function EmailConfigurationsPage() {
 			{
 				accessorKey: "provider",
 				header: m.notifications_email_provider(),
-				meta: { className: "w-32 min-w-32 max-w-32" },
-				cell: ({ row }) => row.original.provider.toUpperCase(),
+				meta: { className: "w-48 min-w-48 max-w-48" },
+				cell: ({ row }) => (
+					<div className="flex items-center gap-2">
+						<EmailProviderLogo
+							className="size-8"
+							providerId={row.original.provider}
+						/>
+						{emailProviderName(row.original.provider)}
+					</div>
+				),
 			},
 			{ accessorKey: "fromAddress", header: m.notifications_from_address() },
 			{
@@ -222,7 +231,6 @@ export function EmailConfigurationsPage() {
 						},
 					});
 				}}
-				onFinishFailed={showNotificationError}
 				onOpenChange={(open) => !open && setEditing(undefined)}
 				open={editing !== undefined}
 				schema={emailConfigSchema(Boolean(editing))}
@@ -244,7 +252,6 @@ export function EmailConfigurationsPage() {
 						},
 					});
 				}}
-				onFinishFailed={showNotificationError}
 				onOpenChange={(open) => !open && setTesting(undefined)}
 				open={testing !== undefined}
 				schema={[
@@ -295,10 +302,13 @@ function emailConfigSchema(editing: boolean): ProSchemaFormItem[] {
 					"cloudflare_email",
 				].map((value) => ({
 					value,
-					label:
-						value === "cloudflare_email"
-							? m.notifications_cloudflare_email_provider()
-							: value.toUpperCase(),
+					searchText: emailProviderName(value),
+					label: (
+						<span className="flex items-center gap-2">
+							<EmailProviderLogo className="size-4" providerId={value} />
+							{emailProviderName(value)}
+						</span>
+					),
 				})),
 			},
 		},
@@ -361,4 +371,15 @@ function emailConfigSchema(editing: boolean): ProSchemaFormItem[] {
 			valueType: "email",
 		},
 	];
+}
+
+function emailProviderName(provider: string) {
+	if (provider === "cloudflare_email")
+		return m.notifications_cloudflare_email_provider();
+	if (provider === "smtp") return "SMTP";
+	if (provider === "sendgrid") return "SendGrid";
+	if (provider === "mailgun") return "Mailgun";
+	if (provider === "postmark") return "Postmark";
+	if (provider === "resend") return "Resend";
+	return provider;
 }

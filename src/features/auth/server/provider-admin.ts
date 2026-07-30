@@ -83,6 +83,8 @@ export const listPublicAuthProvidersFn = createServerFn({
 			displayName: provider.displayName,
 			icon: provider.icon,
 			allowSignup: provider.allowSignup,
+			passwordLoginEnabled: provider.passwordLoginEnabled,
+			emailOtpEnabled: provider.emailOtpEnabled,
 			emailDeliveryEnabled: email?.enabled === 1,
 			telegramMiniAppEnabled:
 				provider.providerId === "telegram" &&
@@ -106,12 +108,6 @@ export const setAuthProviderEnabledFn = createServerFn({ method: "POST" })
 				404,
 				"Authentication provider not found",
 			);
-		if (provider.providerId === "credential" && !data.enabled)
-			throw new DomainError(
-				"auth_provider_protected",
-				409,
-				"Email and password authentication is always enabled",
-			);
 		if (provider.enabled === data.enabled) return data;
 		if (!data.enabled)
 			await assertAuthProviderCanBeDisabled(
@@ -119,12 +115,17 @@ export const setAuthProviderEnabledFn = createServerFn({ method: "POST" })
 				provider.providerId,
 				state.settings.providers,
 			);
-		if (data.enabled)
+		if (data.enabled) {
+			await assertEmailOtpCanBeEnabled(
+				context.db,
+				provider.providerType === "email" && provider.emailOtpEnabled,
+			);
 			assertProviderCanBeEnabled(
 				{ ...provider, telegramMiniAppEnabled: false },
 				state.secretProviderIds.has(provider.providerId),
 				state.settings.telegram,
 			);
+		}
 		const now = Date.now();
 		await context.db.batch([
 			upsertSetting(
@@ -245,6 +246,11 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 			secret.plaintext,
 		);
 		assertProviderCanBeEnabled(data, secret.exists, telegram);
+		if (data.enabled)
+			await assertEmailOtpCanBeEnabled(
+				context.db,
+				data.providerType === "email" && data.emailOtpEnabled,
+			);
 		const now = Date.now();
 		const id = data.id ?? crypto.randomUUID();
 		const provider: StoredAuthProvider = {
@@ -256,6 +262,8 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 			clientId: data.clientId ?? null,
 			scopes: data.scopes,
 			allowSignup: data.allowSignup,
+			passwordLoginEnabled: data.passwordLoginEnabled,
+			emailOtpEnabled: data.emailOtpEnabled,
 			enabled: data.enabled,
 			sortOrder: data.sortOrder,
 		};
@@ -497,7 +505,7 @@ async function resolveProviderSecret(
 	before: StoredAuthProvider | undefined,
 	secretProviderIds: Set<string>,
 ) {
-	if (data.providerType === "email_password" || data.clearClientSecret)
+	if (data.providerType !== "social" || data.clearClientSecret)
 		return {
 			exists: false,
 			plaintext: null,
@@ -615,10 +623,10 @@ function assertProviderCanBeEnabled(
 	hasSecret: boolean,
 	telegram: ReturnType<typeof emptyTelegram>,
 ) {
-	if (!data.enabled || data.providerType === "email_password") return;
+	if (!data.enabled || data.providerType !== "social") return;
 	if (!data.clientId || !hasSecret)
 		throw new DomainError(
-			"auth_provider_incomplete",
+			"auth_email_delivery_required",
 			400,
 			"Enabled providers require a client ID and secret",
 		);
@@ -667,10 +675,25 @@ function presentProvider(
 		createdAt: updatedAt,
 		updatedAt,
 		callbackUrl:
-			provider.providerType === "email_password"
+			provider.providerType !== "social"
 				? null
 				: `${new URL(baseUrl).origin}/api/auth/callback/${provider.providerId}`,
 	};
+}
+
+async function assertEmailOtpCanBeEnabled(db: D1Database, enabled: boolean) {
+	if (!enabled) return;
+	const email = await db
+		.prepare(
+			"SELECT 1 AS enabled FROM notification_channel_configs WHERE channel = 'email' AND enabled = 1 LIMIT 1",
+		)
+		.first<{ enabled: number }>();
+	if (email?.enabled !== 1)
+		throw new DomainError(
+			"auth_provider_incomplete",
+			400,
+			"Email delivery must be enabled before email code sign-in",
+		);
 }
 
 function telegramSettingStatements(

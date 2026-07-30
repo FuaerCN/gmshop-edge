@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { authProviderAllowedScopes } from "#/features/auth/provider-presets";
 
-export const authProviderTypes = ["email_password", "social"] as const;
+export const authProviderTypes = ["email", "social"] as const;
+
+const authProviderRecordIdSchema = z.union([
+	z.string().uuid(),
+	z.literal("auth-provider-credential"),
+]);
 
 export const builtInSocialProviderIds = [
 	"apple",
@@ -16,9 +21,7 @@ export const builtInSocialProviderIds = [
 
 export const authProviderInputSchema = z
 	.object({
-		id: z
-			.union([z.string().uuid(), z.literal("auth-provider-credential")])
-			.optional(),
+		id: authProviderRecordIdSchema.optional(),
 		providerId: z
 			.string()
 			.trim()
@@ -41,6 +44,8 @@ export const authProviderInputSchema = z
 			.max(20)
 			.transform((values) => [...new Set(values)]),
 		allowSignup: z.boolean().default(true),
+		passwordLoginEnabled: z.boolean().default(true),
+		emailOtpEnabled: z.boolean().default(false),
 		enabled: z.boolean().default(false),
 		sortOrder: z.number().int().min(0).max(1_000_000).default(100),
 	})
@@ -79,21 +84,23 @@ export const authProviderInputSchema = z
 						message: "Unsupported scope for authentication provider preset",
 					});
 		}
-		if (
-			value.providerType === "email_password" &&
-			value.providerId !== "credential"
-		) {
+		if (value.providerType === "email" && value.providerId !== "credential") {
 			context.addIssue({
 				code: "custom",
 				path: ["providerId"],
-				message: "Email and password uses the credential provider ID",
+				message: "Email authentication uses the credential provider ID",
 			});
 		}
-		if (value.providerId === "credential" && !value.enabled) {
+		if (
+			value.providerType === "email" &&
+			value.enabled &&
+			!value.passwordLoginEnabled &&
+			!value.emailOtpEnabled
+		) {
 			context.addIssue({
 				code: "custom",
-				path: ["enabled"],
-				message: "Email and password authentication is always enabled",
+				path: ["passwordLoginEnabled"],
+				message: "Enable password login or verification code login",
 			});
 		}
 		if (value.clearClientSecret && value.clientSecret) {
@@ -114,7 +121,7 @@ export const authProviderInputSchema = z
 	});
 
 export const authProviderIdSchema = z.object({
-	id: z.union([z.string().uuid(), z.literal("auth-provider-credential")]),
+	id: authProviderRecordIdSchema,
 });
 
 export const authProviderEnabledSchema = authProviderIdSchema.extend({
@@ -123,7 +130,7 @@ export const authProviderEnabledSchema = authProviderIdSchema.extend({
 
 export const authProviderOrderSchema = z.object({
 	ids: z
-		.array(z.union([z.string().uuid(), z.literal("auth-provider-credential")]))
+		.array(authProviderRecordIdSchema)
 		.min(1)
 		.max(20)
 		.refine((ids) => new Set(ids).size === ids.length),

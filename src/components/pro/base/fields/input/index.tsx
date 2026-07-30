@@ -501,12 +501,13 @@ export function Captcha({
 > & {
 	value?: string;
 	onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
-	onSend?: () => void | Promise<void>;
+	onSend?: () => boolean | undefined | Promise<boolean | undefined>;
 	disabled?: boolean;
 }) {
 	const deadlineRef = useRef(0);
 	const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const [remaining, setRemaining] = useState(0);
+	const [sending, setSending] = useState(false);
 
 	const stopCountdown = useCallback(() => {
 		deadlineRef.current = 0;
@@ -532,10 +533,14 @@ export function Captcha({
 				<ProButton
 					variant="ghost"
 					size="sm"
-					disabled={disabled || remaining > 0}
+					disabled={disabled || sending || remaining > 0}
 					onClick={async (event) => {
 						event.stopPropagation();
-						await onSend?.();
+						setSending(true);
+						const sent = await Promise.resolve()
+							.then(() => onSend?.())
+							.finally(() => setSending(false));
+						if (sent === false) return;
 						stopCountdown();
 						deadlineRef.current = Date.now() + 60_000;
 						setRemaining(60_000);

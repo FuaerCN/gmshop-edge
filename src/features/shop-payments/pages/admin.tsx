@@ -15,6 +15,7 @@ import { ConfigurationLogoField } from "#/components/configuration-logo-field";
 import { ProButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
 import { ProTable, type ProTableState } from "#/components/pro/table";
+import { PaymentProviderLogo } from "#/components/provider-logo";
 import { Badge } from "#/components/ui/badge";
 import {
 	DropdownMenu,
@@ -147,13 +148,11 @@ export function PaymentConfigurationsPage() {
 				meta: { search: true },
 				cell: ({ row }) => (
 					<div className="flex items-center gap-3">
-						{row.original.logoUrl ? (
-							<img
-								alt=""
-								className="size-9 rounded-lg object-contain"
-								src={row.original.logoUrl}
-							/>
-						) : null}
+						<PaymentProviderLogo
+							className="size-9 rounded-lg"
+							logoUrl={row.original.logoUrl}
+							providerId={row.original.provider}
+						/>
 						<div>
 							<strong className="block">{row.original.name}</strong>
 							<span className="text-muted-foreground text-xs">
@@ -302,6 +301,10 @@ export function PaymentConfigurationsPage() {
 										key={item.family}
 										onClick={() => setCreatingProvider(item.provider)}
 									>
+										<PaymentProviderLogo
+											className="size-4"
+											providerId={item.provider}
+										/>
 										{item.label}
 									</DropdownMenuItem>
 								))}

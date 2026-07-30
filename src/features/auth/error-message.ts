@@ -39,3 +39,20 @@ export function changePasswordErrorMessage(error: unknown) {
 			return m.account_change_password_failed();
 	}
 }
+
+export function authProviderErrorMessage(error: unknown) {
+	switch (errorCode(error)) {
+		case "auth_email_delivery_required":
+			return m.auth_provider_error_email_delivery_required();
+		case "auth_provider_incomplete":
+			return m.auth_provider_error_incomplete();
+		case "auth_provider_would_lock_accounts":
+			return m.auth_provider_error_would_lock_accounts();
+		case "auth_provider_conflict":
+			return m.auth_provider_error_conflict();
+		case "auth_provider_in_use":
+			return m.auth_provider_error_in_use();
+		default:
+			return m.auth_provider_operation_failed();
+	}
+}

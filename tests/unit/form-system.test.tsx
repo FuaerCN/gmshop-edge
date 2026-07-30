@@ -27,8 +27,10 @@ vi.mock("#/features/auth/server/provider-admin", () => ({
 	listPublicAuthProvidersFn: vi.fn(async () => [
 		{
 			providerId: "credential",
-			providerType: "email_password",
+			providerType: "email",
 			allowSignup: true,
+			passwordLoginEnabled: true,
+			emailOtpEnabled: false,
 			emailDeliveryEnabled: true,
 		},
 	]),
@@ -75,6 +77,9 @@ describe("application form system", () => {
 			);
 		});
 		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		});
+		await act(async () => {
 			container?.querySelector("form")?.requestSubmit();
 			await Promise.resolve();
 		});
@@ -103,6 +108,9 @@ describe("application form system", () => {
 					</AuthAnimationProvider>
 				</QueryClientProvider>,
 			);
+		});
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
 		});
 
 		const links = Array.from(container.querySelectorAll("a")).filter(

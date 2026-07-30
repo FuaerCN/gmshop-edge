@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { authProviderPresets } from "#/features/auth/provider-presets";
 import { authProviderInputSchema } from "#/features/auth/provider-schema";
+import {
+	authProviderSettingKeys,
+	parseAuthProviderSettings,
+} from "#/features/auth/provider-settings";
 import { sensitiveProofSchema } from "#/features/auth/reauthentication-schema";
 
 describe("authentication provider configuration", () => {
@@ -20,6 +24,81 @@ describe("authentication provider configuration", () => {
 			"telegram",
 			"wechat",
 		]);
+	});
+
+	it("models email as one built-in method with password and code options", () => {
+		expect(
+			authProviderPresets.map((provider) => String(provider.providerId)),
+		).not.toContain("email-otp");
+		expect(
+			authProviderInputSchema.parse({
+				id: "auth-provider-credential",
+				providerId: "credential",
+				providerType: "email",
+				displayName: "Email",
+				scopes: [],
+				passwordLoginEnabled: false,
+				emailOtpEnabled: true,
+				enabled: true,
+			}),
+		).toMatchObject({
+			providerType: "email",
+			passwordLoginEnabled: false,
+			emailOtpEnabled: true,
+		});
+	});
+
+	it("requires an enabled email method to expose a sign-in flow", () => {
+		expect(
+			authProviderInputSchema.safeParse({
+				providerId: "credential",
+				providerType: "email",
+				displayName: "Email",
+				scopes: [],
+				passwordLoginEnabled: false,
+				emailOtpEnabled: false,
+				enabled: true,
+			}).success,
+		).toBe(false);
+	});
+
+	it("normalizes legacy email providers without a database migration", () => {
+		const legacyProvider = {
+			id: "auth-provider-credential",
+			providerId: "credential",
+			providerType: "email_password",
+			displayName: "Email and password",
+			icon: null,
+			clientId: null,
+			scopes: [],
+			allowSignup: true,
+			enabled: true,
+			sortOrder: 10,
+		};
+		const legacyOtp = {
+			...legacyProvider,
+			id: "22222222-2222-4222-8222-222222222222",
+			providerId: "email-otp",
+			providerType: "email_otp",
+			displayName: "Email OTP",
+			sortOrder: 20,
+		};
+		const settings = parseAuthProviderSettings([
+			{
+				key: authProviderSettingKeys.providers,
+				value: JSON.stringify([legacyProvider, legacyOtp]),
+			},
+		]);
+
+		expect(settings.providers).toHaveLength(1);
+		expect(settings.providers[0]).toMatchObject({
+			providerId: "credential",
+			providerType: "email",
+			displayName: "Email",
+			passwordLoginEnabled: true,
+			emailOtpEnabled: true,
+			enabled: true,
+		});
 	});
 
 	it("accepts the canonical Telegram OIDC preset", () => {

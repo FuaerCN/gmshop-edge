@@ -1,3 +1,4 @@
+import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import {
 	authProviderSettingKeys,
 	parseAuthProviderSettings,
@@ -10,32 +11,56 @@ export async function assertAuthProviderCanBeDisabled(
 	providerId: string,
 	providers?: readonly StoredAuthProvider[],
 ) {
+	const configured = providers ?? (await loadStoredProviders(db));
 	const enabled = new Set(
-		(providers ?? (await loadStoredProviders(db)))
+		configured
 			.filter(
 				(provider) => provider.enabled && provider.providerId !== providerId,
 			)
 			.map((provider) => provider.providerId),
 	);
-	const accounts = await db
-		.prepare(
-			`SELECT owner.user_id, alternative.provider_id
-			 FROM accounts owner
-			 LEFT JOIN accounts alternative
-			  ON alternative.user_id = owner.user_id AND alternative.id <> owner.id
-			 WHERE owner.provider_id = ?`,
-		)
-		.bind(providerId)
-		.all<{ user_id: string; provider_id: string | null }>();
-	const alternatives = new Map<string, string[]>();
-	for (const row of accounts.results) {
-		const list = alternatives.get(row.user_id) ?? [];
-		if (row.provider_id) list.push(row.provider_id);
-		alternatives.set(row.user_id, list);
+	const email = configured.find(
+		(provider) => provider.enabled && provider.providerType === "email",
+	);
+	const query =
+		providerId === "credential"
+			? db.prepare(
+					`SELECT u.id AS user_id, u.email, account.provider_id
+					 FROM users u
+					 LEFT JOIN accounts account ON account.user_id = u.id`,
+				)
+			: db
+					.prepare(
+						`SELECT owner.user_id, u.email, alternative.provider_id
+						 FROM accounts owner
+						 JOIN users u ON u.id = owner.user_id
+						 LEFT JOIN accounts alternative
+						  ON alternative.user_id = owner.user_id AND alternative.id <> owner.id
+						 WHERE owner.provider_id = ?`,
+					)
+					.bind(providerId);
+	const rows = await query.all<{
+		user_id: string;
+		email: string;
+		provider_id: string | null;
+	}>();
+	const alternatives = new Map<
+		string,
+		{ email: string; providerIds: string[] }
+	>();
+	for (const row of rows.results) {
+		const user = alternatives.get(row.user_id) ?? {
+			email: row.email,
+			providerIds: [],
+		};
+		if (row.provider_id) user.providerIds.push(row.provider_id);
+		alternatives.set(row.user_id, user);
 	}
 	if (
 		[...alternatives.values()].some(
-			(providerIds) => !providerIds.some((id) => enabled.has(id)),
+			(user) =>
+				!user.providerIds.some((id) => enabled.has(id)) &&
+				!(email?.emailOtpEnabled && !isInternalIdentityEmail(user.email)),
 		)
 	)
 		throw new DomainError(
@@ -62,16 +87,27 @@ export async function assertAccountCanBeUnlinked(
 		)
 		.first<{ id: string }>();
 	if (!target) return;
+	const providers = await loadStoredProviders(db);
 	const enabled = new Set(
-		(await loadStoredProviders(db))
+		providers
 			.filter((provider) => provider.enabled)
 			.map((provider) => provider.providerId),
+	);
+	const email = providers.find(
+		(provider) => provider.enabled && provider.providerType === "email",
 	);
 	const alternatives = await db
 		.prepare("SELECT provider_id FROM accounts WHERE user_id = ? AND id <> ?")
 		.bind(input.userId, target.id)
 		.all<{ provider_id: string }>();
-	if (!alternatives.results.some((row) => enabled.has(row.provider_id)))
+	const user = await db
+		.prepare("SELECT email FROM users WHERE id = ? LIMIT 1")
+		.bind(input.userId)
+		.first<{ email: string }>();
+	if (
+		!alternatives.results.some((row) => enabled.has(row.provider_id)) &&
+		!(email?.emailOtpEnabled && user && !isInternalIdentityEmail(user.email))
+	)
 		throw new DomainError(
 			"auth_last_login_method",
 			409,

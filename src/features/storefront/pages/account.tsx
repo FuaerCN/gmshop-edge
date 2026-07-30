@@ -59,7 +59,7 @@ export function AccountLoginMethods() {
 	const availableProviders =
 		providers.data?.filter(
 			(provider) =>
-				provider.providerType !== "email_password" &&
+				provider.providerType !== "email" &&
 				!accounts.data?.some(
 					(account) => account.providerId === provider.providerId,
 				),

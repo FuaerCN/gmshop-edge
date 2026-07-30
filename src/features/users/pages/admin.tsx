@@ -298,7 +298,7 @@ export function UsersPage({
 									className="flex flex-wrap items-center gap-1.5 font-mono text-muted-foreground text-xs"
 								>
 									<span>
-										{method.providerId}:{" "}
+										{loginMethodKey(method.providerId)}:{" "}
 										{loginBindingIdentifier(method, row.original.email)}
 									</span>
 									{method.providerId === "credential" ? (
@@ -744,6 +744,10 @@ function CustomerDetailModal({
 			) : null}
 		</ProModal>
 	);
+}
+
+function loginMethodKey(providerId: string) {
+	return providerId === "credential" ? "email" : providerId;
 }
 
 function loginMethodLabel(providerId: string) {

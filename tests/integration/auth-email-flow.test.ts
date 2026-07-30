@@ -182,6 +182,36 @@ describe("authentication email flow", { timeout: 30_000 }, () => {
 		});
 	});
 
+	it("signs an existing user in with a code when enabled on Email", async () => {
+		const passwordAuth = createEmailAuth(database);
+		await verifySignup(
+			passwordAuth,
+			database,
+			await signUp(passwordAuth, "otp@example.com"),
+		);
+		await clearDeliveries(database);
+		const otpAuth = createEmailAuth(database, true, true);
+		const sent = await otpAuth.handler(
+			jsonRequest("/api/auth/email-otp/send-verification-otp", {
+				email: "otp@example.com",
+				type: "sign-in",
+			}),
+		);
+		expect(sent.status).toBe(200);
+		const delivery = await latestEmail(database);
+		expect(delivery.subject).toContain("sign-in code");
+		const otp = delivery.text.match(/\b\d{6}\b/)?.[0];
+		expect(otp).toMatch(/^\d{6}$/);
+		const signedIn = await otpAuth.handler(
+			jsonRequest("/api/auth/sign-in/email-otp", {
+				email: "otp@example.com",
+				otp,
+			}),
+		);
+		expect(signedIn.status).toBe(200);
+		expect(responseCookie(signedIn)).toContain("better-auth.session_token");
+	});
+
 	it("confirms a verified email change with the old address before the new one", async () => {
 		const auth = createEmailAuth(database);
 		const signup = await signUp(auth, "current@example.com");
@@ -336,7 +366,11 @@ describe("authentication email flow", { timeout: 30_000 }, () => {
 	});
 });
 
-function createEmailAuth(database: D1Database, emailDeliveryEnabled = true) {
+function createEmailAuth(
+	database: D1Database,
+	emailDeliveryEnabled = true,
+	emailOtpEnabled = false,
+) {
 	return createAuth(drizzle(database, { schema }), {
 		BETTER_AUTH_SECRET: "better-auth-test-secret-at-least-32-characters",
 		BETTER_AUTH_URL: "https://shop.example",
@@ -348,12 +382,14 @@ function createEmailAuth(database: D1Database, emailDeliveryEnabled = true) {
 			{
 				id: "credential-provider",
 				providerId: "credential",
-				providerType: "email_password",
+				providerType: "email",
 				displayName: "Email",
 				clientId: null,
 				clientSecret: null,
 				scopes: [],
 				allowSignup: true,
+				passwordLoginEnabled: true,
+				emailOtpEnabled,
 				revision: 1,
 				telegramBotUserId: null,
 				telegramBotUsername: null,
