@@ -68,7 +68,6 @@ export async function sendProviderEmail(
 			subject: message.subject,
 			text: message.text,
 			...(message.html ? { html: message.html } : {}),
-			headers: { "Idempotency-Key": message.idempotencyKey },
 		});
 		return { success: true, data: { messageId: result.messageId } };
 	}

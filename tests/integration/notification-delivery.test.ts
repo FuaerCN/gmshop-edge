@@ -152,9 +152,6 @@ describe("notification delivery", { timeout: 30_000 }, () => {
 			subject: "Cloudflare binding",
 			text: "Structured text",
 			html: "<p>Structured HTML</p>",
-			headers: {
-				"Idempotency-Key": `cloudflare-email-test:cloudflare-email`,
-			},
 		});
 	});
 
