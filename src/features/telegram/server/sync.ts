@@ -1,7 +1,6 @@
 import { Api, GrammyError } from "grammy";
 import { loadRuntimeAuthProviders } from "#/features/auth/server/provider-runtime";
 import { isSafeWebhookUrl } from "#/lib/webhook-url";
-import { m } from "#/paraglide/messages";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import {
 	loadTelegramSettings,
@@ -11,7 +10,7 @@ import {
 import { deriveTelegramWebhookSecret, telegramDataKeyId } from "./secret";
 
 const retryDelays = [60_000, 300_000, 900_000, 3_600_000] as const;
-export const telegramCommandVersion = "v2";
+export const telegramCommandVersion = "v3";
 
 export async function synchronizeTelegramBot(
 	db: D1Database,
@@ -58,11 +57,7 @@ export async function synchronizeTelegramBot(
 		);
 		await setCommands(api);
 		await api.setChatMenuButton({
-			menu_button: {
-				type: "web_app",
-				text: m.telegram_button_shop({}, { locale: "en-US" }),
-				web_app: { url: miniAppUrl(origin, "shop") },
-			},
+			menu_button: { type: "commands" },
 		});
 		await api.setWebhook(`${origin}/api/telegram/webhook`, {
 			secret_token: secret,
