@@ -6,7 +6,11 @@ import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
 import { ProTable } from "#/components/pro/table";
-import { Badge } from "#/components/ui/badge";
+import { StatusBadge } from "#/components/status-badge";
+import {
+	notificationDeliveryErrorLabel,
+	notificationEventLabel,
+} from "#/features/notifications/labels";
 import {
 	getNotificationCenterFn,
 	retryNotificationDeliveryFn,
@@ -38,19 +42,22 @@ export function EmailRecordsPage() {
 		{
 			accessorKey: "event",
 			header: m.notifications_event(),
-			cell: ({ row }) => <strong>{row.original.event}</strong>,
+			cell: ({ row }) => (
+				<strong>{notificationEventLabel(row.original.event)}</strong>
+			),
 		},
-		{ accessorKey: "channel", header: m.notifications_channel() },
+		{
+			accessorKey: "channel",
+			header: m.notifications_channel(),
+			cell: ({ row }) =>
+				row.original.channel === "email"
+					? m.common_email()
+					: row.original.channel,
+		},
 		{
 			accessorKey: "status",
 			header: m.common_status(),
-			cell: ({ row }) => (
-				<Badge
-					variant={row.original.status === "failed" ? "destructive" : "outline"}
-				>
-					{row.original.status}
-				</Badge>
-			),
+			cell: ({ row }) => <StatusBadge value={row.original.status} />,
 		},
 		{ accessorKey: "attemptCount", header: m.notifications_attempts() },
 		{
@@ -61,7 +68,7 @@ export function EmailRecordsPage() {
 		{
 			accessorKey: "errorCode",
 			header: m.common_last_error(),
-			cell: ({ row }) => row.original.errorCode ?? "—",
+			cell: ({ row }) => notificationDeliveryErrorLabel(row.original.errorCode),
 		},
 		{
 			id: "actions",

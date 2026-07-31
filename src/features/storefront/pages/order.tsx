@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { CopyButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
+import { statusLabel } from "#/components/status-badge";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
@@ -512,7 +513,7 @@ export function StorefrontOrderPage({
 																{afterSale.caseNumber}
 															</strong>
 															<Badge variant="outline">
-																{afterSale.status}
+																{statusLabel(afterSale.status)}
 															</Badge>
 														</div>
 														<p className="mt-2">{afterSale.reason}</p>

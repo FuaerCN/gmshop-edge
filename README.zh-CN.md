@@ -44,6 +44,9 @@ GMShop Edge 是面向 Cloudflare Workers 的自托管、单部署、单租户数
   无需重新构建 Worker。Telegram Mini App 使用验签后的 `initData` 自动注册或登录，
   通过 `@tma.js/sdk` 请求全屏并补齐缺失头像；Telegram 用户可独立绑定已验证邮箱，
   是否设置密码由用户另行决定。
+- 同步由 grammY 驱动的 Webhook Bot，提供本地化商城指令和固定 Mini App 按钮；可选
+  客服功能为每位 Telegram 用户映射一个 Forum Topic，双向转发消息但不保存内容，
+  只信任当前群管理员，并自动关闭长时间无活动的会话。
 - 使用动态多角色 RBAC、不可移除的 root 约束、服务端权限校验、再认证和审计保护
   `/admin`。
 - 提供响应式深浅主题、键盘访问，以及英文（`en-US`）和简体中文（`zh-CN`）两种

@@ -26,6 +26,7 @@ const adminServerModules = [
 	"src/features/suppliers/server/admin.ts",
 	"src/features/suppliers/server/catalog-admin.ts",
 	"src/features/suppliers/server/orders-admin.ts",
+	"src/features/telegram/server/admin.ts",
 	"src/features/users/server/admin.ts",
 ] as const;
 
@@ -44,6 +45,7 @@ const reviewedPublicServerModules = [
 const reviewedInputlessPostFunctions = new Set([
 	"exportAuditLogsFn",
 	"removeSiteLogoFn",
+	"syncTelegramBotFn",
 ]);
 
 describe("server entry authorization coverage", () => {

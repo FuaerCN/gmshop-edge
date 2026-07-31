@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
 import { ProTable, type ProTableState } from "#/components/pro/table";
-import { Badge } from "#/components/ui/badge";
+import { StatusBadge } from "#/components/status-badge";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -81,15 +81,7 @@ export function AutomationCenterPage() {
 			{
 				accessorKey: "status",
 				header: m.common_status(),
-				cell: ({ row }) => (
-					<Badge
-						variant={
-							row.original.status === "failed" ? "destructive" : "outline"
-						}
-					>
-						{row.original.status}
-					</Badge>
-				),
+				cell: ({ row }) => <StatusBadge value={row.original.status} />,
 			},
 			{
 				accessorKey: "productName",

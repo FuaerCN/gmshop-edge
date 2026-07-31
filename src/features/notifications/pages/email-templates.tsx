@@ -9,6 +9,7 @@ import { ProButton } from "#/components/pro/base/button";
 import { ProEditor } from "#/components/pro/editor/client";
 import { ModalForm, type ProSchemaFormItem } from "#/components/pro/form";
 import { ProTable } from "#/components/pro/table";
+import { notificationEventLabel } from "#/features/notifications/labels";
 import {
 	getNotificationCenterFn,
 	saveNotificationTemplateFn,
@@ -141,20 +142,6 @@ function NotificationTemplatesPage() {
 			/>
 		</div>
 	);
-}
-
-function notificationEventLabel(event: string) {
-	const labels: Record<string, () => string> = {
-		order_paid: m.store_account_notification_order_paid,
-		delivery_ready: m.store_account_notification_delivery_ready,
-		automation_ready: m.store_account_notification_automation_ready,
-		automation_failed: m.store_account_notification_automation_failed,
-		refund_succeeded: m.store_account_notification_refund_succeeded,
-		refund_failed: m.store_account_notification_refund_failed,
-		after_sale_updated: m.store_account_notification_after_sale_updated,
-		entitlement_expiring: m.store_account_notification_entitlement_expiring,
-	};
-	return labels[event]?.() ?? event;
 }
 
 function templateSchema(channel: string | undefined): ProSchemaFormItem[] {

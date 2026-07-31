@@ -67,14 +67,7 @@ export function QueuesPage() {
 		{
 			accessorKey: "lastError",
 			header: m.common_last_error(),
-			cell: ({ row }) => (
-				<span
-					className="block max-w-64 truncate"
-					title={row.original.lastError ?? undefined}
-				>
-					{row.original.lastError ?? "—"}
-				</span>
-			),
+			cell: ({ row }) => queueErrorLabel(row.original.lastError),
 		},
 		{
 			id: "actions",
@@ -127,4 +120,21 @@ export function QueuesPage() {
 			/>
 		</div>
 	);
+}
+
+function queueErrorLabel(value: string | null) {
+	if (!value) return "—";
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			"code" in parsed &&
+			parsed.code === "invalid_queue_message"
+		)
+			return m.queue_message_rejected();
+	} catch {
+		// Fall through to the localized, non-sensitive fallback.
+	}
+	return m.queue_processing_failed();
 }

@@ -6,7 +6,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
+import { StatusBadge } from "#/components/status-badge";
 import { Badge } from "#/components/ui/badge";
+import { entitlementStatusLabel } from "#/features/entitlements/labels";
 import { shopOrderStatusLabel } from "#/features/shop-orders/labels";
 import {
 	completeManualShopRefundFn,
@@ -96,7 +98,9 @@ export function OrderWorkspacePage({ orderId }: { orderId: string }) {
 								</div>
 								{item.entitlementStatus ? (
 									<div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-xs">
-										<span>{item.entitlementStatus}</span>
+										<span>
+											{entitlementStatusLabel(item.entitlementStatus)}
+										</span>
 										<span>
 											{m.store_entitlement_usage()}: {item.usageCount} /{" "}
 											{item.currentUsageLimit ?? "∞"}
@@ -134,7 +138,7 @@ export function OrderWorkspacePage({ orderId }: { orderId: string }) {
 										{`${formatMinorAmount(payment.amountMinor, payment.currency, payment.currencyDecimals)} · ${payment.exchangeRateSource} ${payment.exchangeRate}`}
 									</p>
 								</div>
-								<Badge variant="outline">{payment.status}</Badge>
+								<StatusBadge value={payment.status} />
 							</div>
 						))}
 					</WorkspaceSection>
@@ -150,7 +154,7 @@ export function OrderWorkspacePage({ orderId }: { orderId: string }) {
 										{delivery.type} · {delivery.sellableItemName}
 									</p>
 								</div>
-								<Badge variant="outline">{delivery.status}</Badge>
+								<StatusBadge value={delivery.status} />
 							</div>
 						))}
 					</WorkspaceSection>
@@ -185,7 +189,7 @@ export function OrderWorkspacePage({ orderId }: { orderId: string }) {
 									) : null}
 								</div>
 								<div className="flex items-center gap-2">
-									<Badge variant="outline">{refund.status}</Badge>
+									<StatusBadge value={refund.status} />
 									{refund.failureCode === "manual_action_required" ? (
 										<ProButton
 											onClick={() => setManualRefundId(refund.id)}

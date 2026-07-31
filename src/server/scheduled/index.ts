@@ -5,6 +5,7 @@ import { fanOutPendingCommerceNotifications } from "#/features/notifications/ser
 import { expireStoreOrders } from "#/features/shop-orders/server/expiration";
 import { publishPendingRefunds } from "#/features/shop-payments/server/refunds";
 import { publishPendingSupplierOrders } from "#/features/suppliers/server/outbox";
+import { runTelegramMaintenance } from "#/features/telegram/server/maintenance";
 import { runMaintenance } from "#/server/scheduled/maintenance";
 
 export { runMaintenance };
@@ -55,6 +56,7 @@ export async function runScheduledCommerceWork(
 		env.COMMERCE_QUEUE,
 		publishBatchSize,
 	);
+	const telegram = await runTelegramMaintenance(env.DB, scheduledAt);
 	const maintenance = await runMaintenance(env, cron, undefined, scheduledAt);
 	return {
 		expired,
@@ -64,6 +66,7 @@ export async function runScheduledCommerceWork(
 		refunds,
 		notificationEvents,
 		notifications,
+		telegram,
 		maintenance,
 	};
 }

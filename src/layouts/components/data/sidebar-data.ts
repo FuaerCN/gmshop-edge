@@ -12,6 +12,7 @@ import {
 	PackageSearch,
 	ReceiptText,
 	ScrollText,
+	Send,
 	Settings,
 	ShieldCheck,
 	ShieldEllipsis,
@@ -419,6 +420,13 @@ export const navigationGroups: readonly NavigationGroup[] = [
 						() => m.settings_group_retention(),
 						"/admin/settings/retention",
 						ScrollText,
+						systemPermission("settings", "read"),
+					),
+					entry(
+						"settings-telegram",
+						() => m.settings_group_telegram(),
+						"/admin/settings/telegram",
+						Send,
 						systemPermission("settings", "read"),
 					),
 					entry(

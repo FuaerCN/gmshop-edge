@@ -29,11 +29,11 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 
 	afterEach(async () => miniflare.dispose());
 
-	it("uses one fresh GMShop baseline migration", async () => {
+	it("keeps the GMShop baseline and applies incremental migrations", async () => {
 		const files = (
 			await readdir(new URL("../../drizzle/", import.meta.url))
 		).filter((name) => /^\d+_.+\.sql$/.test(name));
-		expect(files).toEqual(["0000_gmshop.sql"]);
+		expect(files).toEqual(["0000_gmshop.sql", "0001_telegram_bot_support.sql"]);
 		const legacyTables = await database
 			.prepare(
 				`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN
@@ -48,7 +48,7 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 				"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'sqlite_%' ORDER BY name",
 			)
 			.all<{ name: string }>();
-		expect(tables.results).toHaveLength(48);
+		expect(tables.results).toHaveLength(50);
 		const foreignKeyFailures = await database
 			.prepare("PRAGMA foreign_key_check")
 			.all();

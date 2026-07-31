@@ -14,6 +14,7 @@ const publicGetPatterns = [
 	new RegExp(`^/api/shop/products/${uuidSegment}/media/${uuidSegment}$`, "i"),
 ];
 const publicPostPatterns = [
+	/^\/api\/telegram\/webhook$/,
 	paymentWebhookPattern,
 	new RegExp(
 		`^/api/shop/automation/${uuidSegment}/artifacts/[^/]{1,255}$`,

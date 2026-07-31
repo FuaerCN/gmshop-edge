@@ -12,11 +12,11 @@ import { getCloudflareEnv } from "#/server/db.server";
 import { loadRequestRuntimeConfig } from "#/server/runtime-config";
 
 const deliveryStatuses = [
+	"awaiting_supply",
 	"pending",
 	"processing",
 	"delivered",
 	"failed",
-	"cancelled",
 ] as const;
 
 const listInput = z.object({

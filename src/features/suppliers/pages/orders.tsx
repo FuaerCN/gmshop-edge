@@ -19,6 +19,7 @@ import { PageHeader } from "#/layouts/components/page-header";
 import { formatDateTime, formatMinorAmount, formatNumber } from "#/lib/format";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
+import { supplierErrorLabel } from "../error-label";
 import {
 	actSupplierOrderFn,
 	listSupplierOrdersFn,
@@ -162,9 +163,9 @@ export function SupplierOrdersPage() {
 						{row.original.last_error_code ? (
 							<span
 								className="max-w-52 truncate text-destructive text-xs"
-								title={String(row.original.last_error_code)}
+								title={supplierErrorLabel(String(row.original.last_error_code))}
 							>
-								{String(row.original.last_error_code)}
+								{supplierErrorLabel(String(row.original.last_error_code))}
 							</span>
 						) : null}
 					</div>

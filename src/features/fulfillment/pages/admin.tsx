@@ -9,7 +9,7 @@ import { ProButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
 import { ProModal } from "#/components/pro/overlay";
 import { ProTable, type ProTableState } from "#/components/pro/table";
-import { Badge } from "#/components/ui/badge";
+import { StatusBadge } from "#/components/status-badge";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -97,9 +97,7 @@ export function DeliveryCenterPage() {
 			{
 				accessorKey: "status",
 				header: m.common_status(),
-				cell: ({ row }) => (
-					<Badge variant="outline">{row.original.status}</Badge>
-				),
+				cell: ({ row }) => <StatusBadge value={row.original.status} />,
 			},
 			{
 				accessorKey: "updatedAt",

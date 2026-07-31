@@ -9,6 +9,9 @@ const orderNumber = "GMABC1234567";
 
 describe("signed and customer API boundaries", () => {
 	it("exposes only the current signed webhook and build callback routes", () => {
+		expect(publicRequest("/api/telegram/webhook", "POST")).toBe(true);
+		expect(publicRequest("/api/telegram/webhook", "GET")).toBe(false);
+		expect(publicRequest("/api/telegram/webhook/extra", "POST")).toBe(false);
 		expect(publicRequest(`/api/shop/payments/${id}/webhook`, "POST")).toBe(
 			true,
 		);

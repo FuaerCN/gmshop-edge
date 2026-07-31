@@ -1,7 +1,15 @@
 import { Badge } from "#/components/ui/badge";
 import { m } from "#/paraglide/messages";
 
-const successful = new Set(["paid", "overpaid", "confirmed", "succeeded"]);
+const successful = new Set([
+	"paid",
+	"overpaid",
+	"confirmed",
+	"succeeded",
+	"delivered",
+	"resolved",
+	"active",
+]);
 const destructive = new Set([
 	"failed",
 	"dead",
@@ -48,6 +56,18 @@ export function statusLabel(value: string) {
 		retrying: m.status_retrying(),
 		dead: m.status_stopped(),
 		rejected: m.status_rejected(),
+		created: m.status_created(),
+		awaiting_supply: m.status_awaiting_supply(),
+		delivered: m.status_delivered(),
+		dispatching: m.status_dispatching(),
+		running: m.status_running(),
+		open: m.status_open(),
+		resolved: m.status_resolved(),
+		closed: m.status_closed(),
+		active: m.status_active(),
+		exhausted: m.status_exhausted(),
+		revoked: m.status_revoked(),
+		sending: m.status_sending(),
 	};
-	return labels[value] ?? value.replaceAll("_", " ");
+	return labels[value] ?? m.status_unknown();
 }

@@ -50,11 +50,13 @@ import { Route as AdminAccessIndexRouteImport } from './routes/admin/access/inde
 import { Route as publicOrdersIndexRouteImport } from './routes/(public)/orders/index'
 import { Route as publicCheckoutIndexRouteImport } from './routes/(public)/checkout/index'
 import { Route as publicAccountIndexRouteImport } from './routes/(public)/account/index'
+import { Route as ApiTelegramWebhookRouteImport } from './routes/api/telegram/webhook'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAdminDownloadAssetsRouteImport } from './routes/api/admin/download-assets'
 import { Route as AdminSuppliersProductsRouteImport } from './routes/admin/suppliers/products'
 import { Route as AdminSuppliersOrdersRouteImport } from './routes/admin/suppliers/orders'
 import { Route as AdminSuppliersAccountsRouteImport } from './routes/admin/suppliers/accounts'
+import { Route as AdminSettingsTelegramRouteImport } from './routes/admin/settings/telegram'
 import { Route as AdminSettingsSecretsRouteImport } from './routes/admin/settings/secrets'
 import { Route as AdminSettingsRetentionRouteImport } from './routes/admin/settings/retention'
 import { Route as AdminSettingsOrdersRouteImport } from './routes/admin/settings/orders'
@@ -306,6 +308,11 @@ const publicAccountIndexRoute = publicAccountIndexRouteImport.update({
   path: '/',
   getParentRoute: () => publicAccountRouteRoute,
 } as any)
+const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
+  id: '/api/telegram/webhook',
+  path: '/api/telegram/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -330,6 +337,11 @@ const AdminSuppliersAccountsRoute = AdminSuppliersAccountsRouteImport.update({
   id: '/accounts',
   path: '/accounts',
   getParentRoute: () => AdminSuppliersRouteRoute,
+} as any)
+const AdminSettingsTelegramRoute = AdminSettingsTelegramRouteImport.update({
+  id: '/telegram',
+  path: '/telegram',
+  getParentRoute: () => AdminSettingsRouteRoute,
 } as any)
 const AdminSettingsSecretsRoute = AdminSettingsSecretsRouteImport.update({
   id: '/secrets',
@@ -646,11 +658,13 @@ export interface FileRoutesByFullPath {
   '/admin/settings/orders': typeof AdminSettingsOrdersRoute
   '/admin/settings/retention': typeof AdminSettingsRetentionRoute
   '/admin/settings/secrets': typeof AdminSettingsSecretsRoute
+  '/admin/settings/telegram': typeof AdminSettingsTelegramRoute
   '/admin/suppliers/accounts': typeof AdminSuppliersAccountsRoute
   '/admin/suppliers/orders': typeof AdminSuppliersOrdersRoute
   '/admin/suppliers/products': typeof AdminSuppliersProductsRoute
   '/api/admin/download-assets': typeof ApiAdminDownloadAssetsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
   '/account/': typeof publicAccountIndexRoute
   '/checkout/': typeof publicCheckoutIndexRoute
   '/orders/': typeof publicOrdersIndexRoute
@@ -729,11 +743,13 @@ export interface FileRoutesByTo {
   '/admin/settings/orders': typeof AdminSettingsOrdersRoute
   '/admin/settings/retention': typeof AdminSettingsRetentionRoute
   '/admin/settings/secrets': typeof AdminSettingsSecretsRoute
+  '/admin/settings/telegram': typeof AdminSettingsTelegramRoute
   '/admin/suppliers/accounts': typeof AdminSuppliersAccountsRoute
   '/admin/suppliers/orders': typeof AdminSuppliersOrdersRoute
   '/admin/suppliers/products': typeof AdminSuppliersProductsRoute
   '/api/admin/download-assets': typeof ApiAdminDownloadAssetsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
   '/account': typeof publicAccountIndexRoute
   '/checkout': typeof publicCheckoutIndexRoute
   '/orders': typeof publicOrdersIndexRoute
@@ -824,11 +840,13 @@ export interface FileRoutesById {
   '/admin/settings/orders': typeof AdminSettingsOrdersRoute
   '/admin/settings/retention': typeof AdminSettingsRetentionRoute
   '/admin/settings/secrets': typeof AdminSettingsSecretsRoute
+  '/admin/settings/telegram': typeof AdminSettingsTelegramRoute
   '/admin/suppliers/accounts': typeof AdminSuppliersAccountsRoute
   '/admin/suppliers/orders': typeof AdminSuppliersOrdersRoute
   '/admin/suppliers/products': typeof AdminSuppliersProductsRoute
   '/api/admin/download-assets': typeof ApiAdminDownloadAssetsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
   '/(public)/account/': typeof publicAccountIndexRoute
   '/(public)/checkout/': typeof publicCheckoutIndexRoute
   '/(public)/orders/': typeof publicOrdersIndexRoute
@@ -918,11 +936,13 @@ export interface FileRouteTypes {
     | '/admin/settings/orders'
     | '/admin/settings/retention'
     | '/admin/settings/secrets'
+    | '/admin/settings/telegram'
     | '/admin/suppliers/accounts'
     | '/admin/suppliers/orders'
     | '/admin/suppliers/products'
     | '/api/admin/download-assets'
     | '/api/auth/$'
+    | '/api/telegram/webhook'
     | '/account/'
     | '/checkout/'
     | '/orders/'
@@ -1001,11 +1021,13 @@ export interface FileRouteTypes {
     | '/admin/settings/orders'
     | '/admin/settings/retention'
     | '/admin/settings/secrets'
+    | '/admin/settings/telegram'
     | '/admin/suppliers/accounts'
     | '/admin/suppliers/orders'
     | '/admin/suppliers/products'
     | '/api/admin/download-assets'
     | '/api/auth/$'
+    | '/api/telegram/webhook'
     | '/account'
     | '/checkout'
     | '/orders'
@@ -1095,11 +1117,13 @@ export interface FileRouteTypes {
     | '/admin/settings/orders'
     | '/admin/settings/retention'
     | '/admin/settings/secrets'
+    | '/admin/settings/telegram'
     | '/admin/suppliers/accounts'
     | '/admin/suppliers/orders'
     | '/admin/suppliers/products'
     | '/api/admin/download-assets'
     | '/api/auth/$'
+    | '/api/telegram/webhook'
     | '/(public)/account/'
     | '/(public)/checkout/'
     | '/(public)/orders/'
@@ -1142,6 +1166,7 @@ export interface RootRouteChildren {
   ApiSiteLogoRoute: typeof ApiSiteLogoRoute
   ApiAdminDownloadAssetsRoute: typeof ApiAdminDownloadAssetsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
   ApiConfigurationLogoScopeIdRoute: typeof ApiConfigurationLogoScopeIdRoute
   ApiShopAutomationCallbackRoute: typeof ApiShopAutomationCallbackRoute
   ApiShopOrdersOrderNumberAutomationRoute: typeof ApiShopOrdersOrderNumberAutomationRouteWithChildren
@@ -1443,6 +1468,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof publicAccountIndexRouteImport
       parentRoute: typeof publicAccountRouteRoute
     }
+    '/api/telegram/webhook': {
+      id: '/api/telegram/webhook'
+      path: '/api/telegram/webhook'
+      fullPath: '/api/telegram/webhook'
+      preLoaderRoute: typeof ApiTelegramWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -1477,6 +1509,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/suppliers/accounts'
       preLoaderRoute: typeof AdminSuppliersAccountsRouteImport
       parentRoute: typeof AdminSuppliersRouteRoute
+    }
+    '/admin/settings/telegram': {
+      id: '/admin/settings/telegram'
+      path: '/telegram'
+      fullPath: '/admin/settings/telegram'
+      preLoaderRoute: typeof AdminSettingsTelegramRouteImport
+      parentRoute: typeof AdminSettingsRouteRoute
     }
     '/admin/settings/secrets': {
       id: '/admin/settings/secrets'
@@ -1972,6 +2011,7 @@ interface AdminSettingsRouteRouteChildren {
   AdminSettingsOrdersRoute: typeof AdminSettingsOrdersRoute
   AdminSettingsRetentionRoute: typeof AdminSettingsRetentionRoute
   AdminSettingsSecretsRoute: typeof AdminSettingsSecretsRoute
+  AdminSettingsTelegramRoute: typeof AdminSettingsTelegramRoute
   AdminSettingsIndexRoute: typeof AdminSettingsIndexRoute
 }
 
@@ -1983,6 +2023,7 @@ const AdminSettingsRouteRouteChildren: AdminSettingsRouteRouteChildren = {
   AdminSettingsOrdersRoute: AdminSettingsOrdersRoute,
   AdminSettingsRetentionRoute: AdminSettingsRetentionRoute,
   AdminSettingsSecretsRoute: AdminSettingsSecretsRoute,
+  AdminSettingsTelegramRoute: AdminSettingsTelegramRoute,
   AdminSettingsIndexRoute: AdminSettingsIndexRoute,
 }
 
@@ -2088,6 +2129,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSiteLogoRoute: ApiSiteLogoRoute,
   ApiAdminDownloadAssetsRoute: ApiAdminDownloadAssetsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
   ApiConfigurationLogoScopeIdRoute: ApiConfigurationLogoScopeIdRoute,
   ApiShopAutomationCallbackRoute: ApiShopAutomationCallbackRoute,
   ApiShopOrdersOrderNumberAutomationRoute:

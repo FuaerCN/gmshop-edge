@@ -17,6 +17,7 @@ import {
 	DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
 import { Switch } from "#/components/ui/switch";
+import { notificationHealthStatusLabel } from "#/features/notifications/labels";
 import {
 	getNotificationCenterFn,
 	reorderEmailChannelsFn,
@@ -130,7 +131,7 @@ export function EmailConfigurationsPage() {
 								: "outline"
 						}
 					>
-						{row.original.lastHealthStatus}
+						{notificationHealthStatusLabel(row.original.lastHealthStatus)}
 					</Badge>
 				),
 			},

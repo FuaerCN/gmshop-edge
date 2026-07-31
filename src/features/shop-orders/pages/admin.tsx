@@ -16,6 +16,7 @@ import { ProButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
 import { ProModal } from "#/components/pro/overlay";
 import { ProTable, type ProTableState } from "#/components/pro/table";
+import { StatusBadge, statusLabel } from "#/components/status-badge";
 import { Badge } from "#/components/ui/badge";
 import {
 	DropdownMenu,
@@ -426,7 +427,10 @@ export function ShopOrdersPage() {
 							fieldProps: {
 								options: afterSaleNextStatuses(
 									afterSaleCase.status as AfterSaleStatus,
-								).map((status) => ({ value: status, label: status })),
+								).map((status) => ({
+									value: status,
+									label: statusLabel(status),
+								})),
 							},
 						},
 						{
@@ -539,7 +543,7 @@ function OrderDetailModal({
 									key={payment.id}
 									title={`${payment.channelName} · ${payment.provider}`}
 									meta={`${formatDateTime(payment.createdAt)} · ${payment.exchangeRateSource} ${payment.exchangeRate}`}
-									value={`${formatMinorAmount(payment.amountMinor, payment.currency, payment.currencyDecimals)} · ${payment.status}`}
+									value={`${formatMinorAmount(payment.amountMinor, payment.currency, payment.currencyDecimals)} · ${statusLabel(payment.status)}`}
 								/>
 							))
 						) : (
@@ -557,7 +561,7 @@ function OrderDetailModal({
 										<strong className="block">{`${delivery.productName} · ${delivery.sellableItemName}`}</strong>
 										<span className="text-muted-foreground text-xs">{`${delivery.type} · ${formatDateTime(delivery.createdAt)}`}</span>
 									</div>
-									<span>{delivery.status}</span>
+									<StatusBadge value={delivery.status} />
 								</div>
 							))
 						) : (
@@ -594,7 +598,7 @@ function OrderDetailModal({
 										) : null}
 									</div>
 									<div className="flex items-center gap-2">
-										<Badge variant="outline">{refund.status}</Badge>
+										<StatusBadge value={refund.status} />
 										{refund.status === "failed" ? (
 											<ProButton
 												onClick={() => onRetryRefund(refund.id)}
@@ -624,7 +628,7 @@ function OrderDetailModal({
 										</p>
 									</div>
 									<div className="flex items-center gap-2">
-										<Badge variant="outline">{afterSale.status}</Badge>
+										<StatusBadge value={afterSale.status} />
 										{afterSale.status !== "closed" ? (
 											<ProButton
 												onClick={() => onManageAfterSale(afterSale)}
@@ -650,7 +654,7 @@ function OrderDetailModal({
 											? `${shopOrderStatusLabel(event.fromStatus)} → ${shopOrderStatusLabel(event.toStatus)}`
 											: event.type
 									}
-									meta={`${event.actorType} · ${formatDateTime(event.createdAt)}${event.note ? ` · ${event.note}` : ""}`}
+									meta={`${event.actorType} · ${formatDateTime(event.createdAt)}${timelineNote(event.type, event.note)}`}
 									value={event.version ? `v${event.version}` : ""}
 								/>
 							))
@@ -662,6 +666,11 @@ function OrderDetailModal({
 			) : null}
 		</ProModal>
 	);
+}
+
+function timelineNote(type: string, note: string | null) {
+	if (!note) return "";
+	return ` · ${type === "refund_failed" ? m.store_account_notification_refund_failed() : note}`;
 }
 
 function DetailSection({

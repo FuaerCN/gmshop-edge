@@ -29,6 +29,7 @@ import { PageHeader } from "#/layouts/components/page-header";
 import { formatDateTime, formatMinorAmount, formatNumber } from "#/lib/format";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
+import { supplierErrorLabel } from "../error-label";
 import {
 	getSupplierSyncSettingsFn,
 	saveSupplierSyncSettingsFn,
@@ -362,9 +363,9 @@ export function SupplierProductsPage() {
 						{row.original.lastErrorCode ? (
 							<span
 								className="max-w-52 truncate text-destructive text-xs"
-								title={String(row.original.lastErrorCode)}
+								title={supplierErrorLabel(String(row.original.lastErrorCode))}
 							>
-								{String(row.original.lastErrorCode)}
+								{supplierErrorLabel(String(row.original.lastErrorCode))}
 							</span>
 						) : row.original.lastSyncedAt ? (
 							<span className="whitespace-nowrap text-muted-foreground text-xs">
