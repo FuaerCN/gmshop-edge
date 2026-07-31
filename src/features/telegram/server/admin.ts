@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { Api } from "grammy";
 import type { z } from "zod";
 import { requireAdmin } from "#/features/access/server/require-admin";
 import { systemPermission } from "#/features/access/system-rbac";
@@ -18,14 +19,24 @@ export const getTelegramSettingsFn = createServerFn({ method: "GET" }).handler(
 	async () => {
 		const { db } = await telegramAdminContext("read");
 		const { runtime, settings, provider } = await telegramRuntime(db);
-		const counts = await db
-			.prepare(
-				`SELECT
+		const webhookUrl = safeWebhookUrl(runtime.betterAuthUrl);
+		const [counts, webhookHealth] = await Promise.all([
+			db
+				.prepare(
+					`SELECT
 				 (SELECT count(*) FROM telegram_support_conversations WHERE status = 'active') AS active_count,
-				 (SELECT count(*) FROM telegram_support_administrators WHERE support_chat_id = ?) AS administrator_count`,
-			)
-			.bind(settings.supportChatId)
-			.first<{ active_count: number; administrator_count: number }>();
+				 (SELECT count(*) FROM telegram_support_administrators WHERE support_chat_id = ?) AS administrator_count,
+				 (SELECT max(updated_at) FROM replay_receipts
+				  WHERE namespace = 'telegram_update' AND scope_id = ?) AS last_update_at`,
+				)
+				.bind(settings.supportChatId, settings.syncedBotUserId)
+				.first<{
+					active_count: number;
+					administrator_count: number;
+					last_update_at: number | null;
+				}>(),
+			inspectWebhook(provider?.telegramBotToken, webhookUrl),
+		]);
 		return {
 			...settings,
 			botName: settings.syncedBotName ?? provider?.displayName ?? null,
@@ -33,7 +44,9 @@ export const getTelegramSettingsFn = createServerFn({ method: "GET" }).handler(
 			dependencyAvailable: Boolean(
 				provider?.telegramBotToken && provider.telegramMiniAppEnabled,
 			),
-			webhookUrl: safeWebhookUrl(runtime.betterAuthUrl),
+			webhookUrl,
+			webhookHealth,
+			lastWebhookUpdateAt: counts?.last_update_at ?? null,
 			activeConversationCount: Number(counts?.active_count ?? 0),
 			administratorCount: Number(counts?.administrator_count ?? 0),
 		};
@@ -203,4 +216,38 @@ function safeWebhookUrl(value: string) {
 	} catch {
 		return null;
 	}
+}
+
+async function inspectWebhook(
+	token: string | null | undefined,
+	expectedUrl: string | null,
+) {
+	if (!token) return { status: "unavailable" as const, pendingUpdates: 0 };
+	try {
+		const info = await new Api(token).getWebhookInfo();
+		return {
+			status: !info.url
+				? ("unconfigured" as const)
+				: expectedUrl !== info.url
+					? ("url_mismatch" as const)
+					: info.last_error_date
+						? ("delivery_failed" as const)
+						: ("ready" as const),
+			pendingUpdates: info.pending_update_count,
+			lastErrorAt: info.last_error_date ? info.last_error_date * 1_000 : null,
+			errorCode: webhookDeliveryErrorCode(info.last_error_message),
+		};
+	} catch {
+		return { status: "unavailable" as const, pendingUpdates: 0 };
+	}
+}
+
+function webhookDeliveryErrorCode(message: string | undefined) {
+	if (!message) return null;
+	if (/timed out/i.test(message)) return "timeout" as const;
+	if (/ssl|tls|certificate/i.test(message)) return "tls" as const;
+	if (/resolve|dns|host/i.test(message)) return "dns" as const;
+	if (/connect|connection/i.test(message)) return "connection" as const;
+	if (/response|status|\b[45]\d\d\b/i.test(message)) return "http" as const;
+	return "unknown" as const;
 }

@@ -302,6 +302,26 @@ function botStatusItems(
 			span: 2 as const,
 		},
 		{
+			label: m.telegram_webhook_delivery(),
+			value: data
+				? m.telegram_webhook_delivery_summary({
+						status: webhookStatusLabel(data.webhookHealth.status),
+						count: data.webhookHealth.pendingUpdates,
+					})
+				: undefined,
+		},
+		{
+			label: m.telegram_last_update(),
+			value: dateValue(data?.lastWebhookUpdateAt),
+		},
+		{
+			label: m.telegram_webhook_last_error(),
+			value: data?.webhookHealth.errorCode
+				? `${webhookErrorLabel(data.webhookHealth.errorCode)} · ${dateValue(data.webhookHealth.lastErrorAt) ?? "—"}`
+				: undefined,
+			span: 2 as const,
+		},
+		{
 			label: m.telegram_last_sync(),
 			value: data
 				? m.telegram_last_sync_summary({
@@ -396,4 +416,27 @@ function telegramErrorLabel(code: string | null | undefined) {
 		sync_failed: m.telegram_status_failed,
 	};
 	return labels[code]?.() ?? m.telegram_status_failed();
+}
+
+function webhookStatusLabel(status: string) {
+	const labels: Record<string, () => string> = {
+		ready: m.telegram_webhook_ready,
+		unconfigured: m.telegram_webhook_unconfigured,
+		url_mismatch: m.telegram_webhook_url_mismatch,
+		delivery_failed: m.telegram_webhook_delivery_failed,
+		unavailable: m.telegram_webhook_unavailable,
+	};
+	return labels[status]?.() ?? m.status_unknown();
+}
+
+function webhookErrorLabel(code: string) {
+	const labels: Record<string, () => string> = {
+		timeout: m.telegram_webhook_error_timeout,
+		tls: m.telegram_webhook_error_tls,
+		dns: m.telegram_webhook_error_dns,
+		connection: m.telegram_webhook_error_connection,
+		http: m.telegram_webhook_error_http,
+		unknown: m.telegram_webhook_error_unknown,
+	};
+	return labels[code]?.() ?? m.telegram_webhook_error_unknown();
 }

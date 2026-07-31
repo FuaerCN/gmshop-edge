@@ -44,6 +44,7 @@ export async function handleTelegramUpdate(db: D1Database, update: unknown) {
 			origin: new URL(runtime.betterAuthUrl).origin,
 			allowSignup: provider.allowSignup,
 		});
+		await bot.init();
 		botCache.clear();
 		botCache.set(key, bot);
 	}

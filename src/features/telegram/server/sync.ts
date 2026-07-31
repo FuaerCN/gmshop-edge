@@ -10,7 +10,7 @@ import {
 import { deriveTelegramWebhookSecret, telegramDataKeyId } from "./secret";
 
 const retryDelays = [60_000, 300_000, 900_000, 3_600_000] as const;
-export const telegramCommandVersion = "v3";
+export const telegramCommandVersion = "v1.1";
 
 export async function synchronizeTelegramBot(
 	db: D1Database,
