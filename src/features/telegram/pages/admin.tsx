@@ -99,16 +99,18 @@ function SupportSettingsModal({
 			schema={supportSettingsSchema(data.activeConversationCount > 0)}
 			initialValues={{
 				supportEnabled: data.supportEnabled,
+				webSupportEnabled: data.webSupportEnabled,
 				supportChatId: data.supportChatId ?? "",
 				idleMinutes: data.idleTimeoutMs / 60_000,
 			}}
-			fieldsClassName="grid grid-cols-1 gap-5 space-y-0"
+			fieldsClassName="grid grid-cols-1 gap-5 space-y-0 md:grid-cols-2"
 			onFinish={async (values) => {
 				await saveTelegramSettingsFn({
 					data: {
 						autoSyncEnabled: data.autoSyncEnabled,
 						autoSyncIntervalMs: data.autoSyncIntervalMs,
 						supportEnabled: formBooleanValue(values.supportEnabled),
+						webSupportEnabled: formBooleanValue(values.webSupportEnabled),
 						supportChatId: String(values.supportChatId ?? "").trim() || null,
 						idleTimeoutMs: Number(values.idleMinutes) * 60_000,
 					},
@@ -168,7 +170,7 @@ function SyncSettingsModal({
 				autoSyncEnabled: data.autoSyncEnabled,
 				intervalMinutes: data.autoSyncIntervalMs / 60_000,
 			}}
-			fieldsClassName="grid grid-cols-1 gap-5 space-y-0 md:grid-cols-2"
+			fieldsClassName="grid grid-cols-1 gap-5 space-y-0"
 			submitter={({ submitting }) => (
 				<>
 					<ProButton
@@ -202,6 +204,7 @@ function SyncSettingsModal({
 							autoSyncEnabled: formBooleanValue(values.autoSyncEnabled),
 							autoSyncIntervalMs: Number(values.intervalMinutes) * 60_000,
 							supportEnabled: data.supportEnabled,
+							webSupportEnabled: data.webSupportEnabled,
 							supportChatId: data.supportChatId,
 							idleTimeoutMs: data.idleTimeoutMs,
 						},
@@ -227,7 +230,14 @@ function supportSettingsSchema(hasActiveConversations: boolean) {
 			valueType: "switch" as const,
 			required: true,
 			render: switchField(m.telegram_support_enabled()),
-			formItemProps: { className: "md:col-span-2" },
+		},
+		{
+			name: "webSupportEnabled",
+			label: m.telegram_web_support_enabled(),
+			tooltip: m.telegram_web_support_enabled_description(),
+			valueType: "switch" as const,
+			required: true,
+			render: switchField(m.telegram_web_support_enabled()),
 		},
 		{
 			name: "supportChatId",
@@ -354,6 +364,14 @@ function supportStatusItems(
 		{
 			label: m.telegram_support_chat_id(),
 			value: textValue(data?.supportChatId),
+		},
+		{
+			label: m.telegram_web_support_enabled(),
+			value: data
+				? data.webSupportEnabled
+					? m.telegram_support_status_enabled()
+					: m.telegram_support_status_disabled()
+				: undefined,
 		},
 		{
 			label: m.telegram_active_conversations(),

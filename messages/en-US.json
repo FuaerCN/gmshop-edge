@@ -1512,5 +1512,18 @@
 	"supplier_error_order_cancelled": "The upstream order was cancelled",
 	"supplier_error_order_failed": "The upstream order failed",
 	"supplier_error_order_refunded": "The upstream order was refunded",
-	"supplier_error_unknown": "Supplier processing failed"
+	"supplier_error_unknown": "Supplier processing failed",
+	"web_support_button": "Contact support",
+	"web_support_title": "Customer support",
+	"web_support_email": "Contact email",
+	"web_support_start": "Start conversation",
+	"web_support_connecting": "Connecting to support…",
+	"web_support_message_placeholder": "Type your message…",
+	"web_support_send": "Send",
+	"web_support_closed": "This conversation is closed.",
+	"web_support_failed": "Unable to complete the request. Please try again.",
+	"web_support_you": "You",
+	"web_support_agent": "Support",
+	"telegram_web_support_enabled": "Enable web support",
+	"telegram_web_support_enabled_description": "Show the web support entry on storefront and account pages. Existing active web conversations continue when disabled."
 }

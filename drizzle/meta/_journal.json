@@ -15,6 +15,13 @@
       "when": 1785537677317,
       "tag": "0001_telegram_bot_support",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785579370198,
+      "tag": "0002_glamorous_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

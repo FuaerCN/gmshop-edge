@@ -2,6 +2,7 @@ import { Outlet } from "@tanstack/react-router";
 import { useSiteBrand } from "#/context/site-brand-provider";
 import { CurrencyProvider } from "#/features/exchange-rates/currency-context";
 import { SiteCustomHtml } from "#/features/settings/components/site-custom-html";
+import { WebSupportWidget } from "#/features/telegram/components/web-support-widget";
 import { SkipToMain } from "#/layouts/components/skip-to-main";
 import { PublicFooter } from "#/layouts/public/footer";
 import { PublicHeader } from "#/layouts/public/header";
@@ -19,6 +20,7 @@ export function PublicLayout() {
 				</main>
 				<PublicFooter />
 				<MobileBottomNavigation />
+				<WebSupportWidget />
 				<SiteCustomHtml html={customHtml} />
 			</div>
 		</CurrencyProvider>

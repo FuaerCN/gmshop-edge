@@ -17,6 +17,11 @@ import {
 } from "../settings";
 import { updateSupportAdministratorMirror } from "./support-admins";
 import { miniAppUrl, telegramRuntime } from "./sync";
+import {
+	closeWebConversationFromTopic,
+	findWebConversationByTopic,
+	storeWebAdministratorReply,
+} from "./web-support";
 
 type TelegramUser = {
 	id: number;
@@ -576,7 +581,7 @@ async function relayAdministratorMessage(db: D1Database, ctx: Context) {
 		String(message.chat.id) !== settings.supportChatId
 	)
 		return;
-	if (!message.message_thread_id || !supportedMessage(message)) return;
+	if (!message.message_thread_id) return;
 	const fresh =
 		settings.lastAdminSyncAt &&
 		settings.lastAdminSyncAt >= Date.now() - 180_000;
@@ -589,6 +594,30 @@ async function relayAdministratorMessage(db: D1Database, ctx: Context) {
 		.bind(settings.supportChatId, String(ctx.from.id))
 		.first<{ allowed: number }>();
 	if (!administrator) return;
+	const webConversation = await findWebConversationByTopic(
+		db,
+		settings.supportChatId,
+		message.message_thread_id,
+	);
+	if (webConversation) {
+		const limit = await claimFixedWindowRateLimit(db, {
+			bucketKey: `telegram:admin:${ctx.from.id}`,
+			limit: 60,
+			windowMs: 60_000,
+		});
+		if (!limit.allowed) return;
+		if (!message.text) {
+			await ctx.api.sendMessage(
+				settings.supportChatId,
+				"Web support currently supports text replies only.",
+				{ message_thread_id: message.message_thread_id },
+			);
+			return;
+		}
+		await storeWebAdministratorReply(db, webConversation, message.text);
+		return;
+	}
+	if (!supportedMessage(message)) return;
 	const conversation = await db
 		.prepare(
 			`SELECT id, customer_chat_id FROM telegram_support_conversations
@@ -618,6 +647,12 @@ async function recordAdministratorTopicClose(db: D1Database, ctx: Context) {
 	if (!ctx.message?.message_thread_id) return;
 	const settings = await loadTelegramSettings(db);
 	if (settings.supportChatId !== String(ctx.message.chat.id)) return;
+	const webClosed = await closeWebConversationFromTopic(
+		db,
+		settings.supportChatId,
+		ctx.message.message_thread_id,
+	);
+	if (Number(webClosed.meta.changes ?? 0) > 0) return;
 	const conversation = await db
 		.prepare(
 			`SELECT c.id, c.customer_chat_id, u.preferred_locale

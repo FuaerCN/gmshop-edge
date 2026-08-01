@@ -4,6 +4,7 @@ export const telegramSettingKeys = {
 	autoSync: "telegram.bot.auto_sync_enabled",
 	autoSyncIntervalMs: "telegram.bot.auto_sync_interval_ms",
 	supportEnabled: "telegram.support.enabled",
+	webSupportEnabled: "telegram.support.web_enabled",
 	supportChatId: "telegram.support.chat_id",
 	idleTimeoutMs: "telegram.support.idle_timeout_ms",
 	status: "telegram.bot.status",
@@ -30,6 +31,7 @@ export const telegramSettingsInputSchema = z.object({
 		.max(86_400_000)
 		.multipleOf(60_000),
 	supportEnabled: z.boolean(),
+	webSupportEnabled: z.boolean(),
 	supportChatId: z
 		.string()
 		.trim()
@@ -66,6 +68,10 @@ export async function loadTelegramSettings(db: D1Database) {
 			60_000,
 		),
 		supportEnabled: bool(values.get(telegramSettingKeys.supportEnabled), false),
+		webSupportEnabled: bool(
+			values.get(telegramSettingKeys.webSupportEnabled),
+			false,
+		),
 		supportChatId: nullableString(
 			values.get(telegramSettingKeys.supportChatId),
 		),

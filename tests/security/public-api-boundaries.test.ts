@@ -42,6 +42,29 @@ describe("signed and customer API boundaries", () => {
 		}
 	});
 
+	it("exposes only the exact web support mailbox routes", () => {
+		for (const path of [
+			"/api/support/web/status",
+			"/api/support/web/current",
+		]) {
+			expect(publicRequest(path, "GET"), path).toBe(true);
+			expect(publicRequest(path, "POST"), path).toBe(false);
+		}
+		for (const path of [
+			"/api/support/web/conversations",
+			"/api/support/web/messages",
+			"/api/support/web/replies/ack",
+			"/api/support/web/close",
+		]) {
+			expect(publicRequest(path, "POST"), path).toBe(true);
+			expect(publicRequest(path, "GET"), path).toBe(false);
+		}
+		expect(publicRequest("/api/support/web/current/extra", "GET")).toBe(false);
+		expect(publicRequest("/api/support/web/messages/extra", "POST")).toBe(
+			false,
+		);
+	});
+
 	it("lets customer order actions reach their own session or checkout-email checks", () => {
 		for (const path of [
 			`/api/shop/orders/${orderNumber}/deliveries/${id}/reveal`,

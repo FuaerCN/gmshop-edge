@@ -197,11 +197,14 @@ export function Password({
 }
 
 interface TextareaProps extends Omit<ComponentProps<"textarea">, "ref"> {
+	allowClear?: boolean;
 	onClear?: () => void;
 	ref?: Ref<HTMLTextAreaElement>;
+	suffix?: ReactNode;
 }
 
 export function Textarea({
+	allowClear = true,
 	onClear,
 	className,
 	value,
@@ -210,6 +213,7 @@ export function Textarea({
 	disabled,
 	readOnly,
 	ref,
+	suffix,
 	...props
 }: TextareaProps) {
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -224,7 +228,18 @@ export function Textarea({
 	const [internalValue, setInternalValue] = useState(defaultValue ?? "");
 	const currentValue = value ?? internalValue;
 	const showClear =
-		currentValue !== "" && currentValue != null && !disabled && !readOnly;
+		allowClear &&
+		currentValue !== "" &&
+		currentValue != null &&
+		!disabled &&
+		!readOnly;
+	const hasSuffix = suffix != null && suffix !== false;
+	const renderedSuffix =
+		typeof suffix === "string" || typeof suffix === "number" ? (
+			<span className="px-2 text-muted-foreground text-sm">{suffix}</span>
+		) : (
+			suffix
+		);
 
 	return (
 		<div className="relative w-full">
@@ -240,12 +255,12 @@ export function Textarea({
 				readOnly={readOnly}
 				className={cn(
 					"flex field-sizing-content min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:ring-destructive/40",
-					showClear && "pr-8",
+					(showClear || hasSuffix) && "pr-12",
 					className,
 				)}
 				{...props}
 			/>
-			{showClear && (
+			{showClear ? (
 				<FieldClearButton
 					label={m.pro_field_clearTextarea()}
 					onClear={() => {
@@ -263,7 +278,12 @@ export function Textarea({
 					}}
 					className="absolute top-2 right-2 z-10 ml-0"
 				/>
-			)}
+			) : null}
+			{hasSuffix ? (
+				<div className="absolute right-2 bottom-2 z-10 flex items-center">
+					{renderedSuffix}
+				</div>
+			) : null}
 		</div>
 	);
 }

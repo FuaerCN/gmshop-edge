@@ -28,6 +28,7 @@ describe("Telegram incremental migration", () => {
 			.bind(now, now)
 			.run();
 		await applyMigration(database, "0001_telegram_bot_support.sql");
+		await applyMigration(database, "0002_glamorous_pete_wisdom.sql");
 		const existing = await database
 			.prepare("SELECT value FROM system_settings WHERE key = 'test.existing'")
 			.first<{ value: string }>();
@@ -41,6 +42,17 @@ describe("Telegram incremental migration", () => {
 		expect(tables.results.map((row) => row.name)).toEqual([
 			"telegram_support_administrators",
 			"telegram_support_conversations",
+		]);
+		const webTables = await database
+			.prepare(
+				`SELECT name FROM sqlite_master WHERE type = 'table'
+				 AND name LIKE 'telegram_web_support_%' ORDER BY name`,
+			)
+			.all<{ name: string }>();
+		expect(webTables.results.map((row) => row.name)).toEqual([
+			"telegram_web_support_conversations",
+			"telegram_web_support_replies",
+			"telegram_web_support_sends",
 		]);
 		expect(
 			(await database.prepare("PRAGMA foreign_key_check").all()).results,

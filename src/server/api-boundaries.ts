@@ -7,6 +7,7 @@ const paymentWebhookPattern = new RegExp(
 	"i",
 );
 const publicGetPatterns = [
+	/^\/api\/support\/web\/(?:status|current)$/,
 	paymentWebhookPattern,
 	new RegExp(`^/api/configuration-logo/payment/${uuidSegment}$`, "i"),
 	/^\/api\/configuration-logo\/auth\/[a-z][a-z0-9_-]{1,63}$/,
@@ -14,6 +15,7 @@ const publicGetPatterns = [
 	new RegExp(`^/api/shop/products/${uuidSegment}/media/${uuidSegment}$`, "i"),
 ];
 const publicPostPatterns = [
+	/^\/api\/support\/web\/(?:conversations|messages|replies\/ack|close)$/,
 	/^\/api\/telegram\/webhook$/,
 	paymentWebhookPattern,
 	new RegExp(

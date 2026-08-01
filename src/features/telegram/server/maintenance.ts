@@ -16,7 +16,9 @@ export async function runTelegramMaintenance(db: D1Database, now = Date.now()) {
 	let administratorSync: unknown = { skipped: true };
 	if (
 		settings.supportChatId &&
-		(settings.supportEnabled || (await activeConversationCount(db)) > 0)
+		(settings.supportEnabled ||
+			settings.webSupportEnabled ||
+			(await activeConversationCount(db)) > 0)
 	) {
 		try {
 			administratorSync = await synchronizeSupportAdministrators(db, now);
@@ -29,14 +31,23 @@ export async function runTelegramMaintenance(db: D1Database, now = Date.now()) {
 		}
 	}
 	let idleClosed = 0;
-	if (provider?.telegramBotToken && settings.supportChatId)
+	let webIdleClosed = 0;
+	if (provider?.telegramBotToken && settings.supportChatId) {
 		idleClosed = await closeIdleConversations(
 			db,
 			new Api(provider.telegramBotToken),
 			settings.idleTimeoutMs,
 			now,
 		);
-	return { sync, administratorSync, idleClosed };
+		webIdleClosed = await closeIdleWebConversations(
+			db,
+			new Api(provider.telegramBotToken),
+			settings.idleTimeoutMs,
+			now,
+		);
+	}
+	const webCleanup = await cleanupWebSupport(db, now);
+	return { sync, administratorSync, idleClosed, webIdleClosed, webCleanup };
 }
 
 async function reconcileBot(db: D1Database, now: number) {
@@ -162,10 +173,98 @@ async function closeIdleConversations(
 async function activeConversationCount(db: D1Database) {
 	const row = await db
 		.prepare(
-			"SELECT count(*) AS count FROM telegram_support_conversations WHERE status = 'active'",
+			`SELECT
+			 (SELECT count(*) FROM telegram_support_conversations WHERE status = 'active') +
+			 (SELECT count(*) FROM telegram_web_support_conversations WHERE status = 'active') AS count`,
 		)
 		.first<{ count: number }>();
 	return Number(row?.count ?? 0);
+}
+
+async function closeIdleWebConversations(
+	db: D1Database,
+	api: Api,
+	idleTimeoutMs: number,
+	now: number,
+) {
+	const cutoff = now - idleTimeoutMs;
+	const rows = await db
+		.prepare(
+			`SELECT id, support_chat_id, message_thread_id FROM telegram_web_support_conversations
+		 WHERE status = 'active' AND last_activity_at <= ?
+		 ORDER BY last_activity_at, id LIMIT 50`,
+		)
+		.bind(cutoff)
+		.all<{
+			id: string;
+			support_chat_id: string;
+			message_thread_id: number | null;
+		}>();
+	let closed = 0;
+	for (const conversation of rows.results) {
+		if (!conversation.message_thread_id) continue;
+		const claim = await db
+			.prepare(
+				`UPDATE telegram_web_support_conversations SET status = 'closing', updated_at = ?
+			 WHERE id = ? AND status = 'active' AND last_activity_at <= ?`,
+			)
+			.bind(now, conversation.id, cutoff)
+			.run();
+		if (Number(claim.meta.changes ?? 0) !== 1) continue;
+		try {
+			await api.sendMessage(
+				conversation.support_chat_id,
+				"Web support conversation closed after inactivity.",
+				{
+					message_thread_id: conversation.message_thread_id,
+				},
+			);
+			await api.closeForumTopic(
+				conversation.support_chat_id,
+				conversation.message_thread_id,
+			);
+			await db
+				.prepare(
+					`UPDATE telegram_web_support_conversations SET status = 'closed', closed_reason = 'idle_timeout',
+				 closed_at = ?, updated_at = ? WHERE id = ? AND status = 'closing'`,
+				)
+				.bind(now, now, conversation.id)
+				.run();
+			closed += 1;
+		} catch {
+			await db
+				.prepare(
+					`UPDATE telegram_web_support_conversations SET status = 'active', updated_at = ?
+				 WHERE id = ? AND status = 'closing'`,
+				)
+				.bind(now, conversation.id)
+				.run();
+		}
+	}
+	return closed;
+}
+
+async function cleanupWebSupport(db: D1Database, now: number) {
+	const [replies, sends] = await db.batch([
+		db
+			.prepare(
+				`DELETE FROM telegram_web_support_replies WHERE id IN (
+			 SELECT id FROM telegram_web_support_replies WHERE expires_at <= ?
+			 ORDER BY expires_at, id LIMIT 500)`,
+			)
+			.bind(now),
+		db
+			.prepare(
+				`DELETE FROM telegram_web_support_sends WHERE id IN (
+			 SELECT id FROM telegram_web_support_sends WHERE created_at <= ?
+			 ORDER BY created_at, id LIMIT 500)`,
+			)
+			.bind(now - 86_400_000),
+	]);
+	return {
+		replies: Number(replies?.meta.changes ?? 0),
+		sends: Number(sends?.meta.changes ?? 0),
+	};
 }
 
 function safeOrigin(value: string) {

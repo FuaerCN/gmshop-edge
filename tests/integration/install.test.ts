@@ -33,7 +33,11 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 		const files = (
 			await readdir(new URL("../../drizzle/", import.meta.url))
 		).filter((name) => /^\d+_.+\.sql$/.test(name));
-		expect(files).toEqual(["0000_gmshop.sql", "0001_telegram_bot_support.sql"]);
+		expect(files).toEqual([
+			"0000_gmshop.sql",
+			"0001_telegram_bot_support.sql",
+			"0002_glamorous_pete_wisdom.sql",
+		]);
 		const legacyTables = await database
 			.prepare(
 				`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN
@@ -48,7 +52,14 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 				"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'sqlite_%' ORDER BY name",
 			)
 			.all<{ name: string }>();
-		expect(tables.results).toHaveLength(50);
+		expect(tables.results).toHaveLength(53);
+		expect(tables.results.map((table) => table.name)).toEqual(
+			expect.arrayContaining([
+				"telegram_web_support_conversations",
+				"telegram_web_support_replies",
+				"telegram_web_support_sends",
+			]),
+		);
 		const foreignKeyFailures = await database
 			.prepare("PRAGMA foreign_key_check")
 			.all();

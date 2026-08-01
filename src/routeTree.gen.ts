@@ -88,10 +88,16 @@ import { Route as AdminProductsProductIdRouteRouteImport } from './routes/admin/
 import { Route as AdminProductsProductIdIndexRouteImport } from './routes/admin/products/$productId/index'
 import { Route as publicAccountOrdersIndexRouteImport } from './routes/(public)/account/orders/index'
 import { Route as publicAccountEntitlementsIndexRouteImport } from './routes/(public)/account/entitlements/index'
+import { Route as ApiSupportWebStatusRouteImport } from './routes/api/support/web/status'
+import { Route as ApiSupportWebMessagesRouteImport } from './routes/api/support/web/messages'
+import { Route as ApiSupportWebCurrentRouteImport } from './routes/api/support/web/current'
+import { Route as ApiSupportWebConversationsRouteImport } from './routes/api/support/web/conversations'
+import { Route as ApiSupportWebCloseRouteImport } from './routes/api/support/web/close'
 import { Route as ApiShopAutomationCallbackRouteImport } from './routes/api/shop/automation/callback'
 import { Route as ApiConfigurationLogoScopeIdRouteImport } from './routes/api/configuration-logo/$scope/$id'
 import { Route as AdminProductsProductIdEditRouteImport } from './routes/admin/products/$productId/edit'
 import { Route as publicAccountOrdersOrderNumberRouteImport } from './routes/(public)/account/orders/$orderNumber'
+import { Route as ApiSupportWebRepliesAckRouteImport } from './routes/api/support/web/replies/ack'
 import { Route as ApiSuppliersDujiaoNextCallbackAccountIdRouteImport } from './routes/api/suppliers/dujiao-next/callback/$accountId'
 import { Route as ApiShopProductsProductIdCoverRouteImport } from './routes/api/shop/products/$productId/cover'
 import { Route as ApiShopPaymentsChannelIdWebhookRouteImport } from './routes/api/shop/payments/$channelId/webhook'
@@ -508,6 +514,32 @@ const publicAccountEntitlementsIndexRoute =
     path: '/entitlements/',
     getParentRoute: () => publicAccountRouteRoute,
   } as any)
+const ApiSupportWebStatusRoute = ApiSupportWebStatusRouteImport.update({
+  id: '/api/support/web/status',
+  path: '/api/support/web/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSupportWebMessagesRoute = ApiSupportWebMessagesRouteImport.update({
+  id: '/api/support/web/messages',
+  path: '/api/support/web/messages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSupportWebCurrentRoute = ApiSupportWebCurrentRouteImport.update({
+  id: '/api/support/web/current',
+  path: '/api/support/web/current',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSupportWebConversationsRoute =
+  ApiSupportWebConversationsRouteImport.update({
+    id: '/api/support/web/conversations',
+    path: '/api/support/web/conversations',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiSupportWebCloseRoute = ApiSupportWebCloseRouteImport.update({
+  id: '/api/support/web/close',
+  path: '/api/support/web/close',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiShopAutomationCallbackRoute =
   ApiShopAutomationCallbackRouteImport.update({
     id: '/api/shop/automation/callback',
@@ -532,6 +564,11 @@ const publicAccountOrdersOrderNumberRoute =
     path: '/orders/$orderNumber',
     getParentRoute: () => publicAccountRouteRoute,
   } as any)
+const ApiSupportWebRepliesAckRoute = ApiSupportWebRepliesAckRouteImport.update({
+  id: '/api/support/web/replies/ack',
+  path: '/api/support/web/replies/ack',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSuppliersDujiaoNextCallbackAccountIdRoute =
   ApiSuppliersDujiaoNextCallbackAccountIdRouteImport.update({
     id: '/api/suppliers/dujiao-next/callback/$accountId',
@@ -678,6 +715,11 @@ export interface FileRoutesByFullPath {
   '/admin/products/$productId/edit': typeof AdminProductsProductIdEditRoute
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
+  '/api/support/web/close': typeof ApiSupportWebCloseRoute
+  '/api/support/web/conversations': typeof ApiSupportWebConversationsRoute
+  '/api/support/web/current': typeof ApiSupportWebCurrentRoute
+  '/api/support/web/messages': typeof ApiSupportWebMessagesRoute
+  '/api/support/web/status': typeof ApiSupportWebStatusRoute
   '/account/entitlements/': typeof publicAccountEntitlementsIndexRoute
   '/account/orders/': typeof publicAccountOrdersIndexRoute
   '/admin/products/$productId/': typeof AdminProductsProductIdIndexRoute
@@ -685,6 +727,7 @@ export interface FileRoutesByFullPath {
   '/api/shop/payments/$channelId/webhook': typeof ApiShopPaymentsChannelIdWebhookRoute
   '/api/shop/products/$productId/cover': typeof ApiShopProductsProductIdCoverRoute
   '/api/suppliers/dujiao-next/callback/$accountId': typeof ApiSuppliersDujiaoNextCallbackAccountIdRoute
+  '/api/support/web/replies/ack': typeof ApiSupportWebRepliesAckRoute
   '/api/shop/automation/$jobId/artifacts/$fileName': typeof ApiShopAutomationJobIdArtifactsFileNameRoute
   '/api/shop/orders/$orderNumber/downloads/$assetId': typeof ApiShopOrdersOrderNumberDownloadsAssetIdRoute
   '/api/shop/products/$productId/media/$mediaId': typeof ApiShopProductsProductIdMediaMediaIdRoute
@@ -763,6 +806,11 @@ export interface FileRoutesByTo {
   '/admin/products/$productId/edit': typeof AdminProductsProductIdEditRoute
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
+  '/api/support/web/close': typeof ApiSupportWebCloseRoute
+  '/api/support/web/conversations': typeof ApiSupportWebConversationsRoute
+  '/api/support/web/current': typeof ApiSupportWebCurrentRoute
+  '/api/support/web/messages': typeof ApiSupportWebMessagesRoute
+  '/api/support/web/status': typeof ApiSupportWebStatusRoute
   '/account/entitlements': typeof publicAccountEntitlementsIndexRoute
   '/account/orders': typeof publicAccountOrdersIndexRoute
   '/admin/products/$productId': typeof AdminProductsProductIdIndexRoute
@@ -770,6 +818,7 @@ export interface FileRoutesByTo {
   '/api/shop/payments/$channelId/webhook': typeof ApiShopPaymentsChannelIdWebhookRoute
   '/api/shop/products/$productId/cover': typeof ApiShopProductsProductIdCoverRoute
   '/api/suppliers/dujiao-next/callback/$accountId': typeof ApiSuppliersDujiaoNextCallbackAccountIdRoute
+  '/api/support/web/replies/ack': typeof ApiSupportWebRepliesAckRoute
   '/api/shop/automation/$jobId/artifacts/$fileName': typeof ApiShopAutomationJobIdArtifactsFileNameRoute
   '/api/shop/orders/$orderNumber/downloads/$assetId': typeof ApiShopOrdersOrderNumberDownloadsAssetIdRoute
   '/api/shop/products/$productId/media/$mediaId': typeof ApiShopProductsProductIdMediaMediaIdRoute
@@ -860,6 +909,11 @@ export interface FileRoutesById {
   '/admin/products/$productId/edit': typeof AdminProductsProductIdEditRoute
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
+  '/api/support/web/close': typeof ApiSupportWebCloseRoute
+  '/api/support/web/conversations': typeof ApiSupportWebConversationsRoute
+  '/api/support/web/current': typeof ApiSupportWebCurrentRoute
+  '/api/support/web/messages': typeof ApiSupportWebMessagesRoute
+  '/api/support/web/status': typeof ApiSupportWebStatusRoute
   '/(public)/account/entitlements/': typeof publicAccountEntitlementsIndexRoute
   '/(public)/account/orders/': typeof publicAccountOrdersIndexRoute
   '/admin/products/$productId/': typeof AdminProductsProductIdIndexRoute
@@ -867,6 +921,7 @@ export interface FileRoutesById {
   '/api/shop/payments/$channelId/webhook': typeof ApiShopPaymentsChannelIdWebhookRoute
   '/api/shop/products/$productId/cover': typeof ApiShopProductsProductIdCoverRoute
   '/api/suppliers/dujiao-next/callback/$accountId': typeof ApiSuppliersDujiaoNextCallbackAccountIdRoute
+  '/api/support/web/replies/ack': typeof ApiSupportWebRepliesAckRoute
   '/api/shop/automation/$jobId/artifacts/$fileName': typeof ApiShopAutomationJobIdArtifactsFileNameRoute
   '/api/shop/orders/$orderNumber/downloads/$assetId': typeof ApiShopOrdersOrderNumberDownloadsAssetIdRoute
   '/api/shop/products/$productId/media/$mediaId': typeof ApiShopProductsProductIdMediaMediaIdRoute
@@ -956,6 +1011,11 @@ export interface FileRouteTypes {
     | '/admin/products/$productId/edit'
     | '/api/configuration-logo/$scope/$id'
     | '/api/shop/automation/callback'
+    | '/api/support/web/close'
+    | '/api/support/web/conversations'
+    | '/api/support/web/current'
+    | '/api/support/web/messages'
+    | '/api/support/web/status'
     | '/account/entitlements/'
     | '/account/orders/'
     | '/admin/products/$productId/'
@@ -963,6 +1023,7 @@ export interface FileRouteTypes {
     | '/api/shop/payments/$channelId/webhook'
     | '/api/shop/products/$productId/cover'
     | '/api/suppliers/dujiao-next/callback/$accountId'
+    | '/api/support/web/replies/ack'
     | '/api/shop/automation/$jobId/artifacts/$fileName'
     | '/api/shop/orders/$orderNumber/downloads/$assetId'
     | '/api/shop/products/$productId/media/$mediaId'
@@ -1041,6 +1102,11 @@ export interface FileRouteTypes {
     | '/admin/products/$productId/edit'
     | '/api/configuration-logo/$scope/$id'
     | '/api/shop/automation/callback'
+    | '/api/support/web/close'
+    | '/api/support/web/conversations'
+    | '/api/support/web/current'
+    | '/api/support/web/messages'
+    | '/api/support/web/status'
     | '/account/entitlements'
     | '/account/orders'
     | '/admin/products/$productId'
@@ -1048,6 +1114,7 @@ export interface FileRouteTypes {
     | '/api/shop/payments/$channelId/webhook'
     | '/api/shop/products/$productId/cover'
     | '/api/suppliers/dujiao-next/callback/$accountId'
+    | '/api/support/web/replies/ack'
     | '/api/shop/automation/$jobId/artifacts/$fileName'
     | '/api/shop/orders/$orderNumber/downloads/$assetId'
     | '/api/shop/products/$productId/media/$mediaId'
@@ -1137,6 +1204,11 @@ export interface FileRouteTypes {
     | '/admin/products/$productId/edit'
     | '/api/configuration-logo/$scope/$id'
     | '/api/shop/automation/callback'
+    | '/api/support/web/close'
+    | '/api/support/web/conversations'
+    | '/api/support/web/current'
+    | '/api/support/web/messages'
+    | '/api/support/web/status'
     | '/(public)/account/entitlements/'
     | '/(public)/account/orders/'
     | '/admin/products/$productId/'
@@ -1144,6 +1216,7 @@ export interface FileRouteTypes {
     | '/api/shop/payments/$channelId/webhook'
     | '/api/shop/products/$productId/cover'
     | '/api/suppliers/dujiao-next/callback/$accountId'
+    | '/api/support/web/replies/ack'
     | '/api/shop/automation/$jobId/artifacts/$fileName'
     | '/api/shop/orders/$orderNumber/downloads/$assetId'
     | '/api/shop/products/$productId/media/$mediaId'
@@ -1169,10 +1242,16 @@ export interface RootRouteChildren {
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
   ApiConfigurationLogoScopeIdRoute: typeof ApiConfigurationLogoScopeIdRoute
   ApiShopAutomationCallbackRoute: typeof ApiShopAutomationCallbackRoute
+  ApiSupportWebCloseRoute: typeof ApiSupportWebCloseRoute
+  ApiSupportWebConversationsRoute: typeof ApiSupportWebConversationsRoute
+  ApiSupportWebCurrentRoute: typeof ApiSupportWebCurrentRoute
+  ApiSupportWebMessagesRoute: typeof ApiSupportWebMessagesRoute
+  ApiSupportWebStatusRoute: typeof ApiSupportWebStatusRoute
   ApiShopOrdersOrderNumberAutomationRoute: typeof ApiShopOrdersOrderNumberAutomationRouteWithChildren
   ApiShopPaymentsChannelIdWebhookRoute: typeof ApiShopPaymentsChannelIdWebhookRoute
   ApiShopProductsProductIdCoverRoute: typeof ApiShopProductsProductIdCoverRoute
   ApiSuppliersDujiaoNextCallbackAccountIdRoute: typeof ApiSuppliersDujiaoNextCallbackAccountIdRoute
+  ApiSupportWebRepliesAckRoute: typeof ApiSupportWebRepliesAckRoute
   ApiShopAutomationJobIdArtifactsFileNameRoute: typeof ApiShopAutomationJobIdArtifactsFileNameRoute
   ApiShopOrdersOrderNumberDownloadsAssetIdRoute: typeof ApiShopOrdersOrderNumberDownloadsAssetIdRoute
   ApiShopProductsProductIdMediaMediaIdRoute: typeof ApiShopProductsProductIdMediaMediaIdRoute
@@ -1734,6 +1813,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof publicAccountEntitlementsIndexRouteImport
       parentRoute: typeof publicAccountRouteRoute
     }
+    '/api/support/web/status': {
+      id: '/api/support/web/status'
+      path: '/api/support/web/status'
+      fullPath: '/api/support/web/status'
+      preLoaderRoute: typeof ApiSupportWebStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/support/web/messages': {
+      id: '/api/support/web/messages'
+      path: '/api/support/web/messages'
+      fullPath: '/api/support/web/messages'
+      preLoaderRoute: typeof ApiSupportWebMessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/support/web/current': {
+      id: '/api/support/web/current'
+      path: '/api/support/web/current'
+      fullPath: '/api/support/web/current'
+      preLoaderRoute: typeof ApiSupportWebCurrentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/support/web/conversations': {
+      id: '/api/support/web/conversations'
+      path: '/api/support/web/conversations'
+      fullPath: '/api/support/web/conversations'
+      preLoaderRoute: typeof ApiSupportWebConversationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/support/web/close': {
+      id: '/api/support/web/close'
+      path: '/api/support/web/close'
+      fullPath: '/api/support/web/close'
+      preLoaderRoute: typeof ApiSupportWebCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/shop/automation/callback': {
       id: '/api/shop/automation/callback'
       path: '/api/shop/automation/callback'
@@ -1761,6 +1875,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/account/orders/$orderNumber'
       preLoaderRoute: typeof publicAccountOrdersOrderNumberRouteImport
       parentRoute: typeof publicAccountRouteRoute
+    }
+    '/api/support/web/replies/ack': {
+      id: '/api/support/web/replies/ack'
+      path: '/api/support/web/replies/ack'
+      fullPath: '/api/support/web/replies/ack'
+      preLoaderRoute: typeof ApiSupportWebRepliesAckRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/suppliers/dujiao-next/callback/$accountId': {
       id: '/api/suppliers/dujiao-next/callback/$accountId'
@@ -2132,12 +2253,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
   ApiConfigurationLogoScopeIdRoute: ApiConfigurationLogoScopeIdRoute,
   ApiShopAutomationCallbackRoute: ApiShopAutomationCallbackRoute,
+  ApiSupportWebCloseRoute: ApiSupportWebCloseRoute,
+  ApiSupportWebConversationsRoute: ApiSupportWebConversationsRoute,
+  ApiSupportWebCurrentRoute: ApiSupportWebCurrentRoute,
+  ApiSupportWebMessagesRoute: ApiSupportWebMessagesRoute,
+  ApiSupportWebStatusRoute: ApiSupportWebStatusRoute,
   ApiShopOrdersOrderNumberAutomationRoute:
     ApiShopOrdersOrderNumberAutomationRouteWithChildren,
   ApiShopPaymentsChannelIdWebhookRoute: ApiShopPaymentsChannelIdWebhookRoute,
   ApiShopProductsProductIdCoverRoute: ApiShopProductsProductIdCoverRoute,
   ApiSuppliersDujiaoNextCallbackAccountIdRoute:
     ApiSuppliersDujiaoNextCallbackAccountIdRoute,
+  ApiSupportWebRepliesAckRoute: ApiSupportWebRepliesAckRoute,
   ApiShopAutomationJobIdArtifactsFileNameRoute:
     ApiShopAutomationJobIdArtifactsFileNameRoute,
   ApiShopOrdersOrderNumberDownloadsAssetIdRoute:

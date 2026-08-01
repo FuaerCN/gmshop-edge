@@ -8,6 +8,7 @@ describe("Telegram settings", () => {
 			autoSyncEnabled: true,
 			autoSyncIntervalMs: 60_000,
 			supportEnabled: false,
+			webSupportEnabled: false,
 			supportChatId: "-1001234567890",
 			idleTimeoutMs: 300_000,
 		};

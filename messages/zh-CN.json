@@ -1512,5 +1512,18 @@
 	"supplier_error_order_cancelled": "上游订单已取消",
 	"supplier_error_order_failed": "上游订单失败",
 	"supplier_error_order_refunded": "上游订单已退款",
-	"supplier_error_unknown": "供应商处理失败"
+	"supplier_error_unknown": "供应商处理失败",
+	"web_support_button": "联系客服",
+	"web_support_title": "在线客服",
+	"web_support_email": "联系邮箱",
+	"web_support_start": "开始咨询",
+	"web_support_connecting": "正在连接客服…",
+	"web_support_message_placeholder": "请输入消息…",
+	"web_support_send": "发送",
+	"web_support_closed": "客服会话已关闭。",
+	"web_support_failed": "操作失败，请稍后重试。",
+	"web_support_you": "我",
+	"web_support_agent": "客服",
+	"telegram_web_support_enabled": "开启网页客服",
+	"telegram_web_support_enabled_description": "在商城和账户页面显示网页客服入口；关闭后已有活跃网页会话仍可继续。"
 }

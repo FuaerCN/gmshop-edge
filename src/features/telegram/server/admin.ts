@@ -24,7 +24,8 @@ export const getTelegramSettingsFn = createServerFn({ method: "GET" }).handler(
 			db
 				.prepare(
 					`SELECT
-				 (SELECT count(*) FROM telegram_support_conversations WHERE status = 'active') AS active_count,
+					 (SELECT count(*) FROM telegram_support_conversations WHERE status = 'active') +
+					 (SELECT count(*) FROM telegram_web_support_conversations WHERE status = 'active') AS active_count,
 				 (SELECT count(*) FROM telegram_support_administrators WHERE support_chat_id = ?) AS administrator_count,
 				 (SELECT max(updated_at) FROM replay_receipts
 				  WHERE namespace = 'telegram_update' AND scope_id = ?) AS last_update_at`,
@@ -64,7 +65,9 @@ export const saveTelegramSettingsFn = createServerFn({ method: "POST" })
 		if (data.supportChatId !== current.supportChatId) {
 			const active = await db
 				.prepare(
-					"SELECT count(*) AS count FROM telegram_support_conversations WHERE status = 'active'",
+					`SELECT
+					 (SELECT count(*) FROM telegram_support_conversations WHERE status = 'active') +
+					 (SELECT count(*) FROM telegram_web_support_conversations WHERE status = 'active') AS count`,
 				)
 				.first<{ count: number }>();
 			if (Number(active?.count ?? 0) > 0)
@@ -75,10 +78,13 @@ export const saveTelegramSettingsFn = createServerFn({ method: "POST" })
 				);
 		}
 		const now = Date.now();
-		if (
-			data.supportEnabled &&
-			(!current.supportEnabled || data.supportChatId !== current.supportChatId)
-		) {
+		const enablingSupport =
+			(data.supportEnabled && !current.supportEnabled) ||
+			(data.webSupportEnabled && !current.webSupportEnabled);
+		const changingActiveSupportChat =
+			(data.supportEnabled || data.webSupportEnabled) &&
+			data.supportChatId !== current.supportChatId;
+		if (enablingSupport || changingActiveSupportChat) {
 			try {
 				const validation = await synchronizeSupportAdministrators(
 					db,
@@ -116,6 +122,12 @@ export const saveTelegramSettingsFn = createServerFn({ method: "POST" })
 			),
 			upsertTelegramSetting(
 				db,
+				telegramSettingKeys.webSupportEnabled,
+				data.webSupportEnabled,
+				now,
+			),
+			upsertTelegramSetting(
+				db,
 				telegramSettingKeys.supportChatId,
 				data.supportChatId,
 				now,
@@ -149,6 +161,7 @@ export const saveTelegramSettingsFn = createServerFn({ method: "POST" })
 				autoSyncEnabled: data.autoSyncEnabled,
 				autoSyncIntervalMs: data.autoSyncIntervalMs,
 				supportEnabled: data.supportEnabled,
+				webSupportEnabled: data.webSupportEnabled,
 				supportChatConfigured: Boolean(data.supportChatId),
 				idleTimeoutMs: data.idleTimeoutMs,
 			}),
