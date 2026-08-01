@@ -58,10 +58,10 @@ function buildBot(
 ) {
 	const bot = new Bot(token);
 	bot.command("start", async (ctx) => {
-		const account = await privateAccount(ctx, db, options.allowSignup);
-		if (!account) return;
-		await ctx.reply(text("welcome", account.locale), {
-			reply_markup: appKeyboard(options.origin, account.locale),
+		const locale = await privateCommandLocale(ctx, db);
+		if (!locale) return;
+		await ctx.reply(text("welcome", locale), {
+			reply_markup: appInlineKeyboard(options.origin, locale),
 		});
 	});
 	bot.command("language", async (ctx) => {
@@ -96,17 +96,10 @@ function buildBot(
 			reply_markup: appKeyboard(options.origin, locale),
 		});
 	});
-	bot.command("support", async (ctx) => {
-		const account = await privateAccount(ctx, db, options.allowSignup);
-		if (!account) return;
-		const conversation = await openSupportConversation(
-			db,
-			ctx,
-			account.userId,
-			account.locale,
-		);
-		if (!conversation) return;
-		await ctx.reply(text("support_opened", account.locale));
+	bot.command("support", (ctx) => beginSupport(ctx, db, options.allowSignup));
+	bot.callbackQuery("support:open", async (ctx) => {
+		await ctx.answerCallbackQuery();
+		await beginSupport(ctx, db, options.allowSignup);
 	});
 	bot.command("close", async (ctx) => {
 		const account = await privateAccount(ctx, db, options.allowSignup);
@@ -114,11 +107,9 @@ function buildBot(
 		await closeSupportConversation(db, ctx, account.locale);
 	});
 	bot.command("help", async (ctx) => {
-		const account = await privateAccount(ctx, db, options.allowSignup);
-		if (!account) return;
-		await ctx.reply(text("help", account.locale), {
-			reply_markup: appKeyboard(options.origin, account.locale),
-		});
+		const locale = await privateCommandLocale(ctx, db);
+		if (!locale) return;
+		await ctx.reply(text("help", locale));
 	});
 	bot.on("chat_member", async (ctx) => {
 		const member = ctx.chatMember.new_chat_member;
@@ -149,8 +140,8 @@ function buildBot(
 	bot.on("message", async (ctx) => {
 		if (ctx.message.chat.type === "private") {
 			if (ctx.message.text?.startsWith("/")) {
-				const account = await privateAccount(ctx, db, options.allowSignup);
-				if (account) await ctx.reply(text("help", account.locale));
+				const locale = await privateCommandLocale(ctx, db);
+				if (locale) await ctx.reply(text("help", locale));
 				return;
 			}
 			await forwardCustomerMessage(db, ctx, options.allowSignup);
@@ -174,6 +165,48 @@ function buildBot(
 	return bot;
 }
 
+async function beginSupport(
+	ctx: Context,
+	db: D1Database,
+	allowSignup: boolean,
+) {
+	const initialLocale = await privateCommandLocale(ctx, db);
+	if (!initialLocale || !ctx.from || ctx.chat?.type !== "private") return;
+	const progress = await ctx.reply(text("support_connecting", initialLocale));
+	try {
+		const account = await ensureTelegramAccount(db, ctx.from, allowSignup);
+		if (!account) {
+			await editSupportProgress(
+				ctx,
+				progress.message_id,
+				text("support_unavailable", initialLocale),
+			);
+			return;
+		}
+		const result = await openSupportConversation(
+			db,
+			ctx,
+			account.userId,
+			account.locale,
+		);
+		await editSupportProgress(
+			ctx,
+			progress.message_id,
+			text(
+				result === "opened" ? "support_opened" : "support_unavailable",
+				account.locale,
+			),
+		);
+	} catch (error) {
+		await editSupportProgress(
+			ctx,
+			progress.message_id,
+			text("support_failed", initialLocale),
+		);
+		throw error;
+	}
+}
+
 async function privateAccount(
 	ctx: Context,
 	db: D1Database,
@@ -187,6 +220,20 @@ async function privateAccount(
 	});
 	if (!limit.allowed) return null;
 	return ensureTelegramAccount(db, ctx.from, allowSignup);
+}
+
+async function privateCommandLocale(ctx: Context, db: D1Database) {
+	if (!ctx.from || ctx.chat?.type !== "private") return null;
+	const limit = await claimFixedWindowRateLimit(db, {
+		bucketKey: `telegram:user:${ctx.from.id}`,
+		limit: 30,
+		windowMs: 60_000,
+	});
+	return limit.allowed ? telegramUserLocale(ctx.from) : null;
+}
+
+function telegramUserLocale(user: TelegramUser): SupportedLocale {
+	return user.language_code?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
 }
 
 async function ensureTelegramAccount(
@@ -213,11 +260,7 @@ async function ensureTelegramAccount(
 	if (!allowSignup) return null;
 	const now = Date.now();
 	const userId = crypto.randomUUID();
-	const locale: SupportedLocale = user.language_code
-		?.toLowerCase()
-		.startsWith("zh")
-		? "zh-CN"
-		: "en-US";
+	const locale = telegramUserLocale(user);
 	const name = topicDisplayName(user);
 	await db.batch([
 		db
@@ -275,7 +318,7 @@ async function openSupportConversation(
 	userId: string,
 	locale: SupportedLocale,
 ) {
-	if (!ctx.from || ctx.chat?.type !== "private") return null;
+	if (!ctx.from || ctx.chat?.type !== "private") return "unavailable" as const;
 	const settings = await loadTelegramSettings(db);
 	const existing = await conversationForUser(
 		db,
@@ -288,17 +331,17 @@ async function openSupportConversation(
 			existing?.status !== "active" &&
 			existing?.status !== "closing")
 	) {
-		await ctx.reply(text("support_unavailable", locale));
-		return null;
+		return "unavailable" as const;
 	}
 	if (existing?.status === "active" || existing?.status === "closing") {
 		if (existing.status === "closing") await restoreActive(db, existing.id);
 		await touchConversation(db, existing.id);
-		return { ...existing, status: "active" };
+		return "opened" as const;
 	}
 	const now = Date.now();
 	if (existing?.status === "creating") {
-		if ((existing.creation_lease_expires_at ?? now + 1) > now) return null;
+		if ((existing.creation_lease_expires_at ?? now + 1) > now)
+			return "unavailable" as const;
 		await db
 			.prepare(
 				`DELETE FROM telegram_support_conversations WHERE id = ?
@@ -338,7 +381,7 @@ async function openSupportConversation(
 			text("topic_opened", locale),
 			{ message_thread_id: threadId },
 		);
-		return { ...existing, status: "active", message_thread_id: threadId };
+		return "opened" as const;
 	}
 	if (existing)
 		await db
@@ -368,7 +411,7 @@ async function openSupportConversation(
 			now,
 		)
 		.run();
-	if (Number(reserved.meta.changes ?? 0) !== 1) return null;
+	if (Number(reserved.meta.changes ?? 0) !== 1) return "unavailable" as const;
 	try {
 		const topic = await ctx.api.createForumTopic(
 			settings.supportChatId,
@@ -389,12 +432,7 @@ async function openSupportConversation(
 				message_thread_id: topic.message_thread_id,
 			},
 		);
-		return {
-			id,
-			status: "active",
-			message_thread_id: topic.message_thread_id,
-			customer_chat_id: String(ctx.chat.id),
-		};
+		return "opened" as const;
 	} catch (error) {
 		await db
 			.prepare("DELETE FROM telegram_support_conversations WHERE id = ?")
@@ -402,6 +440,11 @@ async function openSupportConversation(
 			.run();
 		throw error;
 	}
+}
+
+function editSupportProgress(ctx: Context, messageId: number, value: string) {
+	if (!ctx.chat) return Promise.resolve();
+	return ctx.api.editMessageText(ctx.chat.id, messageId, value);
 }
 
 async function closeSupportConversation(
@@ -659,10 +702,37 @@ function appKeyboard(origin: string, locale: SupportedLocale) {
 		.persistent();
 }
 
+function appInlineKeyboard(origin: string, locale: SupportedLocale) {
+	return new InlineKeyboard()
+		.webApp(
+			{ text: buttonLabel("shop", locale), style: "primary" },
+			miniAppUrl(origin, "shop"),
+		)
+		.webApp(buttonLabel("orders", locale), miniAppUrl(origin, "orders"))
+		.row()
+		.webApp(buttonLabel("account", locale), miniAppUrl(origin, "account"))
+		.text(
+			{ text: m.telegram_button_support({}, { locale }), style: "success" },
+			"support:open",
+		);
+}
+
 function languageKeyboard(locale: SupportedLocale) {
 	return new InlineKeyboard()
-		.text(`${locale === "zh-CN" ? "✓ " : ""}简体中文`, "language:zh-CN")
-		.text(`${locale === "en-US" ? "✓ " : ""}English`, "language:en-US");
+		.text(
+			{
+				text: `${locale === "zh-CN" ? "✓ " : ""}简体中文`,
+				style: locale === "zh-CN" ? "success" : undefined,
+			},
+			"language:zh-CN",
+		)
+		.text(
+			{
+				text: `${locale === "en-US" ? "✓ " : ""}English`,
+				style: locale === "en-US" ? "success" : undefined,
+			},
+			"language:en-US",
+		);
 }
 
 function buttonLabel(
@@ -682,6 +752,8 @@ function text(
 		| "language_choose"
 		| "language_updated"
 		| "support_opened"
+		| "support_connecting"
+		| "support_failed"
 		| "support_closed"
 		| "support_unavailable"
 		| "support_send_first"
@@ -695,6 +767,8 @@ function text(
 		language_choose: m.telegram_language_choose,
 		language_updated: m.telegram_language_updated,
 		support_opened: m.telegram_support_opened,
+		support_connecting: m.telegram_support_connecting,
+		support_failed: m.telegram_support_failed,
 		support_closed: m.telegram_support_closed,
 		support_unavailable: m.telegram_support_unavailable,
 		support_send_first: m.telegram_support_send_first,
