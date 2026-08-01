@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAlipayProvider } from "#/features/shop-payments/providers/alipay";
+import {
+	createAlipayProvider,
+	createAutomaticAlipayProvider,
+} from "#/features/shop-payments/providers/alipay";
 import {
 	bytesToBase64,
 	rsaSha256Sign,
 	rsaSha256Verify,
 } from "#/features/shop-payments/providers/rsa";
-import { createWechatPayProvider } from "#/features/shop-payments/providers/wechatpay";
+import {
+	createAutomaticWechatPayProvider,
+	createWechatPayProvider,
+} from "#/features/shop-payments/providers/wechatpay";
 
 describe("China payment providers", () => {
 	it("creates signed Alipay desktop and mobile Web checkout URLs", async () => {
@@ -40,6 +46,30 @@ describe("China payment providers", () => {
 					signature,
 				),
 			).toBe(true);
+		}
+	});
+
+	it("selects the Alipay checkout product from the customer device", async () => {
+		const merchant = await rsaPair();
+		const credential = {
+			appId: "2026000000000001",
+			sellerId: "2088000000000001",
+			privateKeyPem: merchant.privateKeyPem,
+			alipayPublicKeyPem: merchant.publicKeyPem,
+		};
+		const provider = createAutomaticAlipayProvider();
+		for (const [payerMobile, productCode] of [
+			[false, "FAST_INSTANT_TRADE_PAY"],
+			[true, "QUICK_WAP_WAY"],
+		] as const) {
+			const payment = await provider.createPayment(
+				paymentInput({ payerMobile }),
+				credential,
+			);
+			const business = JSON.parse(
+				new URL(payment.checkoutUrl).searchParams.get("biz_content") ?? "{}",
+			);
+			expect(business.product_code).toBe(productCode);
 		}
 	});
 
@@ -161,6 +191,39 @@ describe("China payment providers", () => {
 		).resolves.toMatchObject({
 			checkoutUrl: "https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb",
 		});
+	});
+
+	it("selects WeChat Native or H5 from the customer device", async () => {
+		const merchant = await rsaPair();
+		const platform = await rsaPair();
+		const credential = wechatCredential(merchant, platform);
+		const provider = createAutomaticWechatPayProvider();
+		for (const [payerMobile, path, response] of [
+			[
+				false,
+				"/v3/pay/transactions/native",
+				{ code_url: "weixin://wxpay/bizpayurl?pr=automatic" },
+			],
+			[
+				true,
+				"/v3/pay/transactions/h5",
+				{ h5_url: "https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb" },
+			],
+		] as const) {
+			const fetcher = signedWechatFetcher(
+				platform.privateKeyPem,
+				response,
+				(input) => expect(String(input)).toContain(path),
+			);
+			await provider.createPayment(
+				paymentInput({
+					payerMobile,
+					payerIp: payerMobile ? "203.0.113.10" : null,
+				}),
+				credential,
+				fetcher,
+			);
+		}
 	});
 
 	it("verifies and decrypts WeChat APIv3 payment notifications", async () => {

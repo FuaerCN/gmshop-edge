@@ -33,6 +33,7 @@ describe("shop payment providers", () => {
 		const fetcher = vi.fn(
 			async (_input: RequestInfo | URL, init?: RequestInit) => {
 				const body = new URLSearchParams(String(init?.body));
+				expect(body.get("type")).toBe("alipay");
 				expect(body.get("amount")).toBe("12.345");
 				expect(body.get("currency")).toBe("KWD");
 				expect(body.get("token")).toBe("usdt");
@@ -114,7 +115,7 @@ describe("shop payment providers", () => {
 				expect(String(input)).toBe("https://pay.example.com/submit.php");
 				expect(init?.redirect).toBe("manual");
 				const body = new URLSearchParams(String(init?.body));
-				expect(body.get("type")).toBe("alipay");
+				expect(body.get("type")).toBe("wxpay");
 				expect(body.get("token")).toBe("usdt");
 				expect(body.get("network")).toBe("tron");
 				expect(body.get("sign_type")).toBe("MD5");
@@ -127,7 +128,7 @@ describe("shop payment providers", () => {
 		await expect(
 			epayPaymentProvider.createPayment(
 				paymentInput({ defaultToken: "usdt", defaultNetwork: "tron" }),
-				epusdtCredential(),
+				{ ...epusdtCredential(), paymentMethod: "wxpay" },
 				fetcher,
 			),
 		).resolves.toEqual({

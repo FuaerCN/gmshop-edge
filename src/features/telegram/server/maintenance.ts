@@ -2,7 +2,7 @@ import { Api } from "grammy";
 import type { SupportedLocale } from "#/lib/locales";
 import { m } from "#/paraglide/messages";
 import { telegramSettingKeys, upsertTelegramSetting } from "../settings";
-import { telegramDataKeyId } from "./secret";
+import { telegramWebhookSigningKeyId } from "./secret";
 import { synchronizeSupportAdministrators } from "./support-admins";
 import {
 	synchronizeTelegramBot,
@@ -59,8 +59,8 @@ async function reconcileBot(db: D1Database, now: number) {
 		settings.lastAutoSyncCheckAt > now - settings.autoSyncIntervalMs
 	)
 		return { skipped: true };
-	const dataKeyId = runtime.dataEncryptionSecret
-		? await telegramDataKeyId(runtime.dataEncryptionSecret)
+	const dataKeyId = runtime.automationCallbackSecret
+		? await telegramWebhookSigningKeyId(runtime.automationCallbackSecret)
 		: null;
 	const origin = safeOrigin(runtime.betterAuthUrl);
 	const pending =

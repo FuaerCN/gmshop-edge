@@ -7,11 +7,15 @@ import {
 	MoreHorizontal,
 	Pencil,
 	PlugZap,
+	Plus,
 	Trash2,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ConfigurationLogoField } from "#/components/configuration-logo-field";
+import {
+	type ConfigurationLogoDraft,
+	ConfigurationLogoField,
+} from "#/components/configuration-logo-field";
 import { ProButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
 import { ProTable, type ProTableState } from "#/components/pro/table";
@@ -69,6 +73,8 @@ export function PaymentConfigurationsPage() {
 		(typeof paymentProviderValues)[number] | null
 	>(null);
 	const [editing, setEditing] = useState<Channel | null>(null);
+	const [creatingLogo, setCreatingLogo] =
+		useState<ConfigurationLogoDraft | null>(null);
 	const [deleting, setDeleting] = useState<Channel | null>(null);
 	const refresh = useCallback(async () => {
 		await client.invalidateQueries({
@@ -241,7 +247,7 @@ export function PaymentConfigurationsPage() {
 
 	async function submit(values: Record<string, unknown>, channel?: Channel) {
 		const provider = paymentProviderFromForm(values);
-		await save.mutateAsync({
+		return save.mutateAsync({
 			data: {
 				id: channel?.id,
 				provider,
@@ -253,9 +259,12 @@ export function PaymentConfigurationsPage() {
 				enabled: channel?.enabled ?? false,
 				stripeSecretKey: String(values.stripeSecretKey ?? ""),
 				stripeWebhookSecret: String(values.stripeWebhookSecret ?? ""),
+				cryptomusMerchantId: String(values.cryptomusMerchantId ?? ""),
+				cryptomusPaymentApiKey: String(values.cryptomusPaymentApiKey ?? ""),
 				epusdtBaseUrl: String(values.epusdtBaseUrl ?? ""),
 				epusdtPid: String(values.epusdtPid ?? ""),
 				epusdtSecretKey: String(values.epusdtSecretKey ?? ""),
+				epusdtPaymentMethod: String(values.epusdtPaymentMethod ?? "alipay"),
 				alipayAppId: String(values.alipayAppId ?? ""),
 				alipaySellerId: String(values.alipaySellerId ?? ""),
 				alipayPrivateKeyPem: String(values.alipayPrivateKeyPem ?? ""),
@@ -291,11 +300,15 @@ export function PaymentConfigurationsPage() {
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<ProButton>
+									<Plus />
 									{m.common_new()}
 									<ChevronDown />
 								</ProButton>
 							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
+							<DropdownMenuContent
+								align="end"
+								className="max-h-80 overflow-y-auto"
+							>
 								{paymentProviderMenu.map((item) => (
 									<DropdownMenuItem
 										key={item.family}
@@ -333,7 +346,11 @@ export function PaymentConfigurationsPage() {
 				<ModalForm
 					key={creatingProvider}
 					open
-					onOpenChange={(open) => !open && setCreatingProvider(null)}
+					onOpenChange={(open) => {
+						if (open) return;
+						setCreatingProvider(null);
+						setCreatingLogo(null);
+					}}
 					title={m.payment_channels_new()}
 					schema={channelFormSchema(false)}
 					initialValues={newChannelValues(
@@ -341,12 +358,24 @@ export function PaymentConfigurationsPage() {
 						currencies.data?.baseCurrency ?? "USD",
 					)}
 					onFinish={async (values) => {
-						await submit(values);
+						const channel = await submit(values);
+						if (creatingLogo)
+							await uploadPaymentChannelLogoFn({
+								data: { id: channel.id, ...creatingLogo },
+							});
+						await refresh();
 						setCreatingProvider(null);
+						setCreatingLogo(null);
 					}}
 					onFinishFailed={showError}
 					modalClassName="sm:max-w-2xl"
-				/>
+					fieldsClassName="grid gap-4 space-y-0 sm:grid-cols-2"
+				>
+					<ConfigurationLogoField
+						onPendingChange={setCreatingLogo}
+						url={null}
+					/>
+				</ModalForm>
 			) : null}
 			{editing ? (
 				<ModalForm
@@ -356,9 +385,12 @@ export function PaymentConfigurationsPage() {
 					title={m.payment_channels_edit()}
 					schema={channelFormSchema(true)}
 					initialValues={channelValues(editing)}
-					onFinish={(values) => submit(values, editing)}
+					onFinish={async (values) => {
+						await submit(values, editing);
+					}}
 					onFinishFailed={showError}
 					modalClassName="sm:max-w-2xl"
+					fieldsClassName="grid gap-4 space-y-0 sm:grid-cols-2"
 				>
 					<ConfigurationLogoField
 						id={editing.id}
@@ -393,8 +425,6 @@ function newChannelValues(
 ) {
 	return {
 		type: paymentProviderFamily(provider),
-		alipayMode: provider === "alipay_wap" ? "alipay_wap" : "alipay_page",
-		wechatMode: provider === "wechat_h5" ? "wechat_h5" : "wechat_native",
 		name: paymentProviderLabel(provider),
 		currency: baseCurrency,
 		feeBps: 0,
@@ -402,9 +432,12 @@ function newChannelValues(
 		enabled: false,
 		stripeSecretKey: "",
 		stripeWebhookSecret: "",
+		cryptomusMerchantId: "",
+		cryptomusPaymentApiKey: "",
 		epusdtBaseUrl: "",
 		epusdtPid: "",
 		epusdtSecretKey: "",
+		epusdtPaymentMethod: "alipay",
 		alipayAppId: "",
 		alipaySellerId: "",
 		alipayPrivateKeyPem: "",
@@ -431,32 +464,6 @@ function channelFormSchema(editing: boolean) {
 			fieldProps: {
 				disabled: editing,
 				options: paymentTypeOptions,
-			},
-		},
-		{
-			name: "alipayMode",
-			label: m.payment_channels_integration_mode(),
-			valueType: "select" as const,
-			required: true,
-			hidden: (values: Record<string, unknown>) => values.type !== "alipay",
-			fieldProps: {
-				options: [
-					{ value: "alipay_page", label: "Web" },
-					{ value: "alipay_wap", label: "Mobile Web" },
-				],
-			},
-		},
-		{
-			name: "wechatMode",
-			label: m.payment_channels_integration_mode(),
-			valueType: "select" as const,
-			required: true,
-			hidden: (values: Record<string, unknown>) => values.type !== "wechat",
-			fieldProps: {
-				options: [
-					{ value: "wechat_native", label: "Native" },
-					{ value: "wechat_h5", label: "H5" },
-				],
 			},
 		},
 		{ name: "name", label: m.common_name(), required: true },
@@ -497,6 +504,19 @@ function channelFormSchema(editing: boolean) {
 			hidden: (values: Record<string, unknown>) => values.type !== "stripe",
 		},
 		{
+			name: "cryptomusMerchantId",
+			label: m.payment_channels_cryptomus_merchant_id(),
+			extra,
+			hidden: (values: Record<string, unknown>) => values.type !== "cryptomus",
+		},
+		{
+			name: "cryptomusPaymentApiKey",
+			label: m.payment_channels_cryptomus_payment_api_key(),
+			valueType: "password" as const,
+			extra,
+			hidden: (values: Record<string, unknown>) => values.type !== "cryptomus",
+		},
+		{
 			name: "alipayAppId",
 			label: m.payment_channels_alipay_app_id(),
 			extra,
@@ -513,6 +533,7 @@ function channelFormSchema(editing: boolean) {
 			label: m.payment_channels_merchant_private_key(),
 			valueType: "textarea" as const,
 			extra,
+			formItemProps: { className: "sm:col-span-2" },
 			hidden: (values: Record<string, unknown>) => values.type !== "alipay",
 		},
 		{
@@ -520,6 +541,7 @@ function channelFormSchema(editing: boolean) {
 			label: m.payment_channels_alipay_public_key(),
 			valueType: "textarea" as const,
 			extra,
+			formItemProps: { className: "sm:col-span-2" },
 			hidden: (values: Record<string, unknown>) => values.type !== "alipay",
 		},
 		{
@@ -545,6 +567,7 @@ function channelFormSchema(editing: boolean) {
 			label: m.payment_channels_merchant_private_key(),
 			valueType: "textarea" as const,
 			extra,
+			formItemProps: { className: "sm:col-span-2" },
 			hidden: (values: Record<string, unknown>) => values.type !== "wechat",
 		},
 		{
@@ -565,12 +588,14 @@ function channelFormSchema(editing: boolean) {
 			label: m.payment_channels_wechat_platform_public_key(),
 			valueType: "textarea" as const,
 			extra,
+			formItemProps: { className: "sm:col-span-2" },
 			hidden: (values: Record<string, unknown>) => values.type !== "wechat",
 		},
 		{
 			name: "epusdtBaseUrl",
 			label: m.payment_channels_epusdt_base_url(),
 			extra,
+			formItemProps: { className: "sm:col-span-2" },
 			hidden: (values: Record<string, unknown>) =>
 				values.type !== "gmpay" && values.type !== "epay",
 		},
@@ -590,18 +615,30 @@ function channelFormSchema(editing: boolean) {
 				values.type !== "gmpay" && values.type !== "epay",
 		},
 		{
+			name: "epusdtPaymentMethod",
+			label: m.payment_channels_epusdt_payment_method(),
+			tooltip: m.payment_channels_epusdt_payment_method_hint(),
+			required: true,
+			hidden: (values: Record<string, unknown>) =>
+				values.type !== "gmpay" && values.type !== "epay",
+		},
+		{
 			name: "defaultToken",
 			label: m.payment_channels_epusdt_token(),
 			tooltip: m.payment_channels_epusdt_asset_hint(),
 			hidden: (values: Record<string, unknown>) =>
-				values.type !== "gmpay" && values.type !== "epay",
+				values.type !== "gmpay" &&
+				values.type !== "epay" &&
+				values.type !== "cryptomus",
 		},
 		{
 			name: "defaultNetwork",
 			label: m.payment_channels_epusdt_network(),
 			tooltip: m.payment_channels_epusdt_asset_hint(),
 			hidden: (values: Record<string, unknown>) =>
-				values.type !== "gmpay" && values.type !== "epay",
+				values.type !== "gmpay" &&
+				values.type !== "epay" &&
+				values.type !== "cryptomus",
 		},
 	];
 }
@@ -609,10 +646,6 @@ function channelFormSchema(editing: boolean) {
 function channelValues(channel: Channel) {
 	return {
 		type: paymentProviderFamily(channel.provider),
-		alipayMode:
-			channel.provider === "alipay_wap" ? "alipay_wap" : "alipay_page",
-		wechatMode:
-			channel.provider === "wechat_h5" ? "wechat_h5" : "wechat_native",
 		name: channel.name,
 		currency: channel.currency,
 		feeBps: channel.feeBps,
@@ -620,9 +653,12 @@ function channelValues(channel: Channel) {
 		enabled: channel.enabled,
 		stripeSecretKey: "",
 		stripeWebhookSecret: "",
+		cryptomusMerchantId: "",
+		cryptomusPaymentApiKey: "",
 		epusdtBaseUrl: "",
 		epusdtPid: "",
 		epusdtSecretKey: "",
+		epusdtPaymentMethod: channel.paymentMethod,
 		alipayAppId: "",
 		alipaySellerId: "",
 		alipayPrivateKeyPem: "",
@@ -643,20 +679,21 @@ function paymentProviderLabel(
 	provider: (typeof paymentProviderValues)[number],
 ) {
 	if (provider === "gmpay") return "GMpay";
+	if (provider === "cryptomus") return "Cryptomus";
 	if (provider === "epay") return "EPay";
-	if (provider === "alipay_page") return "Alipay · Web";
-	if (provider === "alipay_wap") return "Alipay · Mobile Web";
-	if (provider === "wechat_native") return "WeChat Pay · Native";
-	if (provider === "wechat_h5") return "WeChat Pay · H5";
+	if (provider === "alipay_page" || provider === "alipay_wap") return "Alipay";
+	if (provider === "wechat_native" || provider === "wechat_h5")
+		return "WeChat Pay";
 	return "Stripe";
 }
 
 const paymentProviderMenu = [
-	{ family: "stripe", provider: "stripe", label: "Stripe" },
 	{ family: "gmpay", provider: "gmpay", label: "GMpay" },
-	{ family: "epay", provider: "epay", label: "EPay" },
 	{ family: "alipay", provider: "alipay_page", label: "Alipay" },
 	{ family: "wechat", provider: "wechat_native", label: "WeChat Pay" },
+	{ family: "stripe", provider: "stripe", label: "Stripe" },
+	{ family: "cryptomus", provider: "cryptomus", label: "Cryptomus" },
+	{ family: "epay", provider: "epay", label: "EPay" },
 ] as const;
 
 const paymentTypeOptions = paymentProviderMenu.map((item) => ({
@@ -668,10 +705,8 @@ function paymentProviderFromForm(
 	values: Record<string, unknown>,
 ): PaymentProvider {
 	const type = String(values.type ?? "stripe") as PaymentProviderFamily;
-	if (type === "alipay")
-		return values.alipayMode === "alipay_wap" ? "alipay_wap" : "alipay_page";
-	if (type === "wechat")
-		return values.wechatMode === "wechat_h5" ? "wechat_h5" : "wechat_native";
+	if (type === "alipay") return "alipay_page";
+	if (type === "wechat") return "wechat_native";
 	return type;
 }
 

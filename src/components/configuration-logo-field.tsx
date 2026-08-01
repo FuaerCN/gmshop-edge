@@ -21,19 +21,28 @@ type LogoInput = {
 	};
 };
 
+export type ConfigurationLogoDraft = {
+	contentType: (typeof configurationLogoContentTypes)[number];
+	base64: string;
+};
+
+type ConfigurationLogoFieldProps = {
+	id?: string;
+	url: string | null;
+	upload?: (input: LogoInput) => Promise<LogoResult>;
+	remove?: (input: { data: { id: string } }) => Promise<unknown>;
+	onChanged?: () => Promise<unknown>;
+	onPendingChange?: (draft: ConfigurationLogoDraft | null) => void;
+};
+
 export function ConfigurationLogoField({
 	id,
 	url,
 	upload,
 	remove,
 	onChanged,
-}: {
-	id: string;
-	url: string | null;
-	upload: (input: LogoInput) => Promise<LogoResult>;
-	remove: (input: { data: { id: string } }) => Promise<unknown>;
-	onChanged: () => Promise<unknown>;
-}) {
+	onPendingChange,
+}: ConfigurationLogoFieldProps) {
 	const [preview, setPreview] = useState(url ?? "");
 	const [busy, setBusy] = useState(false);
 
@@ -56,16 +65,20 @@ export function ConfigurationLogoField({
 				toast.error(m.settings_site_logo_square());
 				return false;
 			}
-			const result = await upload({
-				data: {
-					id,
-					contentType:
-						file.type as (typeof configurationLogoContentTypes)[number],
-					base64: dataUrl.slice(dataUrl.indexOf(",") + 1),
-				},
-			});
+			const draft = {
+				contentType:
+					file.type as (typeof configurationLogoContentTypes)[number],
+				base64: dataUrl.slice(dataUrl.indexOf(",") + 1),
+			};
+			if (!id) {
+				onPendingChange?.(draft);
+				setPreview(dataUrl);
+				return dataUrl;
+			}
+			if (!upload) return false;
+			const result = await upload({ data: { id, ...draft } });
 			setPreview(result.url);
-			await onChanged();
+			await onChanged?.();
 			return result.url;
 		} catch {
 			toast.error(m.settings_save_failed());
@@ -113,9 +126,10 @@ export function ConfigurationLogoField({
 						onClick={async () => {
 							setBusy(true);
 							try {
-								await remove({ data: { id } });
+								if (id && remove) await remove({ data: { id } });
+								else onPendingChange?.(null);
 								setPreview("");
-								await onChanged();
+								await onChanged?.();
 							} catch {
 								toast.error(m.settings_save_failed());
 							} finally {

@@ -7,7 +7,10 @@ import {
 	telegramSettingKeys,
 	upsertTelegramSetting,
 } from "../settings";
-import { deriveTelegramWebhookSecret, telegramDataKeyId } from "./secret";
+import {
+	deriveTelegramWebhookSecret,
+	telegramWebhookSigningKeyId,
+} from "./secret";
 
 const retryDelays = [60_000, 300_000, 900_000, 3_600_000] as const;
 export const telegramCommandVersion = "v1.1";
@@ -30,6 +33,7 @@ export async function synchronizeTelegramBot(
 		!provider.telegramBotUserId ||
 		!provider.telegramMiniAppEnabled ||
 		!runtime.dataEncryptionSecret ||
+		!runtime.automationCallbackSecret ||
 		!isPublicHttpsOrigin(runtime.betterAuthUrl)
 	) {
 		await storeSyncFailure(
@@ -51,7 +55,7 @@ export async function synchronizeTelegramBot(
 			throw new Error("telegram_bot_identity_changed");
 		const origin = new URL(runtime.betterAuthUrl).origin;
 		const secret = await deriveTelegramWebhookSecret(
-			runtime.dataEncryptionSecret,
+			runtime.automationCallbackSecret,
 			provider.telegramBotUserId,
 			provider.revision,
 		);
@@ -91,7 +95,7 @@ export async function synchronizeTelegramBot(
 			upsertTelegramSetting(
 				db,
 				telegramSettingKeys.syncedDataKeyId,
-				await telegramDataKeyId(runtime.dataEncryptionSecret),
+				await telegramWebhookSigningKeyId(runtime.automationCallbackSecret),
 				now,
 			),
 			upsertTelegramSetting(db, telegramSettingKeys.syncedOrigin, origin, now),

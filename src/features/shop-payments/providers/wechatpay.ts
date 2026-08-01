@@ -239,6 +239,21 @@ export function createWechatPayProvider(
 	};
 }
 
+export function createAutomaticWechatPayProvider(): PaymentProviderAdapter {
+	const desktop = createWechatPayProvider("native");
+	const mobile = createWechatPayProvider("h5");
+	return {
+		...desktop,
+		createPayment(input, credential, fetcher) {
+			return (input.payerMobile ? mobile : desktop).createPayment(
+				input,
+				credential,
+				fetcher,
+			);
+		},
+	};
+}
+
 async function wechatRequest(
 	credential: z.output<typeof wechatCredentialSchema>,
 	method: "GET" | "POST",

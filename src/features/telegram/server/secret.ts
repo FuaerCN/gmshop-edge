@@ -1,11 +1,11 @@
 export async function deriveTelegramWebhookSecret(
-	dataEncryptionSecret: string,
+	signingKey: string,
 	botUserId: string,
 	providerRevision: number,
 ) {
 	const key = await crypto.subtle.importKey(
 		"raw",
-		new TextEncoder().encode(dataEncryptionSecret),
+		new TextEncoder().encode(signingKey),
 		{ name: "HMAC", hash: "SHA-256" },
 		false,
 		["sign"],
@@ -15,6 +15,16 @@ export async function deriveTelegramWebhookSecret(
 		await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value)),
 	);
 	return bytesToBase64Url(digest);
+}
+
+export async function telegramWebhookSigningKeyId(signingKey: string) {
+	const digest = new Uint8Array(
+		await crypto.subtle.digest(
+			"SHA-256",
+			new TextEncoder().encode(`telegram-webhook-signing-key:v1:${signingKey}`),
+		),
+	);
+	return bytesToBase64Url(digest.slice(0, 12));
 }
 
 export async function telegramDataKeyId(secret: string) {

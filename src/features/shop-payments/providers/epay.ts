@@ -36,7 +36,7 @@ export const epayPaymentProvider: PaymentProviderAdapter = {
 			notify_url: input.webhookUrl,
 			return_url: input.successUrl,
 			name: input.description,
-			type: "alipay",
+			type: credential.paymentMethod,
 			currency: input.currency.toLowerCase(),
 			sign_type: "MD5",
 		};

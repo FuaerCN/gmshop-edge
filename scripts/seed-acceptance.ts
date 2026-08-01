@@ -119,6 +119,21 @@ const paymentChannels = [
 		sortOrder: 300,
 	},
 	{
+		id: uuid(6, 8),
+		provider: "cryptomus",
+		name: "Cryptomus",
+		currency: "USD",
+		defaultToken: "",
+		defaultNetwork: "",
+		credential: {
+			merchantId: uuid(9, 1),
+			paymentApiKey: "demo-cryptomus-payment-key-not-real",
+		},
+		feeBps: 40,
+		fixedFeeMinor: "0",
+		sortOrder: 350,
+	},
+	{
 		id: uuid(6, 4),
 		provider: "alipay_page",
 		name: "支付宝电脑网站支付",

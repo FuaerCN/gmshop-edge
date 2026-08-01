@@ -66,11 +66,8 @@ administration console.
 - Persist each user's preferred language for account and transactional email;
   guest orders retain the checkout locale as a notification fallback.
 
-GMShop Edge is a store, not a payment gateway. It does not expose merchant API
-credentials or gateway order protocols, scan blockchains, or operate
-exchange/wallet receiving adapters. GMpay and EPay are outbound hosted-checkout
-adapters for this store's own orders only. Every capability listed here is part
-of the open-source project; there is no closed Pro or Enterprise tier.
+Every GMShop Edge capability listed above is part of the open-source project;
+there is no closed Pro or Enterprise tier.
 
 ## Architecture
 
@@ -193,9 +190,6 @@ After installation:
 4. Configure a payment adapter and complete a real-provider acceptance order
    before opening the store.
 5. Back up D1, private R2 data, and the runtime configuration.
-
-For upstream stock sourcing, see
-[supplier configuration and recovery](docs/suppliers.md).
 
 ## Technology stack
 

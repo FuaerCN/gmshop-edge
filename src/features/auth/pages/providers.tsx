@@ -7,7 +7,14 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Settings2, Trash2 } from "lucide-react";
+import {
+	ChevronDown,
+	MoreHorizontal,
+	Pencil,
+	Plus,
+	Settings2,
+	Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfigurationLogoField } from "#/components/configuration-logo-field";
@@ -212,7 +219,11 @@ export function AuthProvidersPage() {
 							<AuthPolicyModal />
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
-									<ProButton>{m.auth_provider_new()}</ProButton>
+									<ProButton>
+										<Plus />
+										{m.auth_provider_new()}
+										<ChevronDown />
+									</ProButton>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent
 									align="end"

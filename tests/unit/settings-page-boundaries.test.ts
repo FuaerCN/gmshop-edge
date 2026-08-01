@@ -82,6 +82,20 @@ describe("settings page ownership", () => {
 		expect(server).toContain('systemPermission("settings", "read")');
 	});
 
+	it("renders each signing-key purpose on its own tooltip line", () => {
+		const page = read(`${settingsRoot}/pages/admin.tsx`);
+		const messages = JSON.parse(read("messages/zh-CN.json")) as Record<
+			string,
+			string
+		>;
+		expect(page).toContain('description.split("\\n")');
+		expect(page).toContain('className="block"');
+		expect(messages.settings_automation_callback_secret).toBe("签名密钥");
+		const description =
+			messages.settings_automation_callback_secret_description ?? "";
+		expect(description.split("\n")).toHaveLength(5);
+	});
+
 	it("keeps currency rates on the settings page scroll and exposes every maintained currency", () => {
 		const ratePage = read("src/features/exchange-rates/pages/admin.tsx");
 		const publicRates = read("src/features/exchange-rates/server/public.ts");

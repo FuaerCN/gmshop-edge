@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Plus, Send } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Pencil, Plus, Send } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
@@ -41,6 +41,15 @@ type EmailProvider =
 	| "smtp"
 	| "cloudflare_email";
 
+const emailProviderValues: EmailProvider[] = [
+	"resend",
+	"postmark",
+	"sendgrid",
+	"mailgun",
+	"smtp",
+	"cloudflare_email",
+];
+
 export function EmailConfigurationsPage() {
 	const tableUrlState = useCurrentProTableUrlState({ searchColumnId: "name" });
 	const client = useQueryClient();
@@ -48,7 +57,10 @@ export function EmailConfigurationsPage() {
 		queryKey: ["admin", "notifications"],
 		queryFn: () => getNotificationCenterFn(),
 	});
-	const [editing, setEditing] = useState<EmailConfig | null | undefined>();
+	const [editing, setEditing] = useState<EmailConfig | undefined>();
+	const [creatingProvider, setCreatingProvider] = useState<
+		EmailProvider | undefined
+	>();
 	const [testing, setTesting] = useState<EmailConfig | null | undefined>();
 	const refresh = useCallback(
 		() => client.invalidateQueries({ queryKey: ["admin", "notifications"] }),
@@ -58,6 +70,7 @@ export function EmailConfigurationsPage() {
 		mutationFn: saveEmailChannelFn,
 		onSuccess: async () => {
 			setEditing(undefined);
+			setCreatingProvider(undefined);
 			await refresh();
 			toast.success(m.notifications_channel_saved());
 		},
@@ -181,10 +194,32 @@ export function EmailConfigurationsPage() {
 							<Send />
 							{m.notifications_overall_test()}
 						</ProButton>
-						<ProButton onClick={() => setEditing(null)}>
-							<Plus />
-							{m.notifications_add_config()}
-						</ProButton>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<ProButton>
+									<Plus />
+									{m.notifications_add_config()}
+									<ChevronDown />
+								</ProButton>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent
+								align="end"
+								className="max-h-80 overflow-y-auto"
+							>
+								{emailProviderValues.map((provider) => (
+									<DropdownMenuItem
+										key={provider}
+										onClick={() => setCreatingProvider(provider)}
+									>
+										<EmailProviderLogo
+											className="size-4"
+											providerId={provider}
+										/>
+										{emailProviderName(provider)}
+									</DropdownMenuItem>
+								))}
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</div>
 				}
 				description={m.notifications_email_description()}
@@ -208,10 +243,10 @@ export function EmailConfigurationsPage() {
 				toolbarSearch={{ columnId: "name", placeholder: m.common_search() }}
 			/>
 			<ModalForm
-				key={editing?.id ?? "new-email-config"}
+				key={editing?.id ?? creatingProvider ?? "closed-email-config"}
 				description={m.notifications_email_description()}
 				fieldsClassName="grid gap-4 sm:grid-cols-2"
-				initialValues={emailConfigValues(editing)}
+				initialValues={emailConfigValues(editing, creatingProvider)}
 				modalClassName="sm:max-w-2xl"
 				onFinish={async (values) => {
 					await save.mutateAsync({
@@ -232,8 +267,13 @@ export function EmailConfigurationsPage() {
 						},
 					});
 				}}
-				onOpenChange={(open) => !open && setEditing(undefined)}
-				open={editing !== undefined}
+				onOpenChange={(open) => {
+					if (!open) {
+						setEditing(undefined);
+						setCreatingProvider(undefined);
+					}
+				}}
+				open={editing !== undefined || creatingProvider !== undefined}
 				schema={emailConfigSchema(Boolean(editing))}
 				title={
 					editing ? m.notifications_edit_config() : m.notifications_add_config()
@@ -269,10 +309,13 @@ export function EmailConfigurationsPage() {
 	);
 }
 
-function emailConfigValues(config: EmailConfig | null | undefined) {
+function emailConfigValues(
+	config: EmailConfig | undefined,
+	provider: EmailProvider = "resend",
+) {
 	return {
 		name: config?.name ?? "",
-		provider: config?.provider ?? "resend",
+		provider: config?.provider ?? provider,
 		apiKey: "",
 		domain: config?.domain ?? "",
 		region: config?.region ?? "us",
@@ -294,14 +337,7 @@ function emailConfigSchema(editing: boolean): ProSchemaFormItem[] {
 			valueType: "select",
 			required: true,
 			fieldProps: {
-				options: [
-					"resend",
-					"postmark",
-					"sendgrid",
-					"mailgun",
-					"smtp",
-					"cloudflare_email",
-				].map((value) => ({
+				options: emailProviderValues.map((value) => ({
 					value,
 					searchText: emailProviderName(value),
 					label: (

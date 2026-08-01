@@ -3,6 +3,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
 	alipayCredentialSchema,
+	cryptomusCredentialSchema,
 	epayCredentialSchema,
 	gmpayCredentialSchema,
 	paymentProviderValues,
@@ -87,6 +88,7 @@ describe("local acceptance seed contract", () => {
 			"gmpay",
 			"epay",
 			"stripe",
+			"cryptomus",
 			"alipay_page",
 			"alipay_wap",
 			"wechat_native",
@@ -238,6 +240,7 @@ describe("local acceptance seed contract", () => {
 
 function credentialSchema(provider: AcceptancePaymentChannel["provider"]) {
 	if (provider === "stripe") return stripeCredentialSchema;
+	if (provider === "cryptomus") return cryptomusCredentialSchema;
 	if (provider === "gmpay") return gmpayCredentialSchema;
 	if (provider === "epay") return epayCredentialSchema;
 	if (provider === "alipay_page" || provider === "alipay_wap")
@@ -255,19 +258,15 @@ async function readPaymentChannels(source: string) {
 		),
 		sourceSection(source, "function wechatCredential(", "\nfunction uuid("),
 		sourceSection(source, "function uuid(", "\nfunction linkId("),
-		"export { paymentChannels };",
+		"return paymentChannels;",
 	].join("\n");
 	const transpiled = ts.transpileModule(executableSource, {
 		compilerOptions: {
-			module: ts.ModuleKind.ESNext,
+			module: ts.ModuleKind.None,
 			target: ts.ScriptTarget.ES2022,
 		},
 	}).outputText;
-	const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(transpiled)}`;
-	const module = (await import(/* @vite-ignore */ moduleUrl)) as {
-		paymentChannels: AcceptancePaymentChannel[];
-	};
-	return module.paymentChannels;
+	return new Function(transpiled)() as AcceptancePaymentChannel[];
 }
 
 function sourceSection(source: string, startMarker: string, endMarker: string) {

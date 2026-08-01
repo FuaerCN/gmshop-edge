@@ -38,6 +38,7 @@ const authProviderIcons: Record<string, ProviderIconDefinition> = {
 const paymentProviderIcons: Record<string, ProviderIconDefinition> = {
 	alipay_page: { brandColor: true, icon: SiAlipay },
 	alipay_wap: { brandColor: true, icon: SiAlipay },
+	cryptomus: { icon: CryptomusLogo },
 	epay: { color: "#1677FF", icon: BadgeDollarSign },
 	gmpay: { brandColor: true, icon: SiTether },
 	stripe: { brandColor: true, icon: SiStripe },
@@ -107,6 +108,14 @@ function MicrosoftLogo(props: SVGProps<SVGSVGElement>) {
 			<rect fill="#7FBA00" height="10.5" width="10.5" x="12.5" y="1" />
 			<rect fill="#00A4EF" height="10.5" width="10.5" x="1" y="12.5" />
 			<rect fill="#FFB900" height="10.5" width="10.5" x="12.5" y="12.5" />
+		</svg>
+	);
+}
+
+function CryptomusLogo(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg aria-hidden="true" fill="currentColor" viewBox="0 0 32 36" {...props}>
+			<path d="M30.611 8.507 16.935.61a2.01 2.01 0 0 0-2.005 0L1.254 8.507A2.01 2.01 0 0 0 .25 10.245v15.791c0 .713.384 1.378 1.004 1.738L14.93 35.67a2.03 2.03 0 0 0 2.008 0l13.677-7.896a2.01 2.01 0 0 0 1.004-1.738V10.245c0-.713-.385-1.378-1.004-1.738zM16.242 17.16a.62.62 0 0 1-.62 0L2.328 9.487l13.296-7.675a.64.64 0 0 1 .62 0l13.295 7.675zm-1.312 1.197q.146.084.312.142v15.743l-13.296-7.67a.62.62 0 0 1-.311-.537V10.684z" />
 		</svg>
 	);
 }

@@ -72,6 +72,7 @@ export const gmpayPaymentProvider: PaymentProviderAdapter = {
 			notify_url: input.webhookUrl,
 			redirect_url: input.successUrl,
 			name: input.description,
+			type: credential.paymentMethod,
 		};
 		if (input.defaultToken && input.defaultNetwork) {
 			params.token = input.defaultToken;

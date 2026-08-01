@@ -20,6 +20,9 @@ describe("provider logos", () => {
 		const epay = renderToStaticMarkup(
 			<PaymentProviderLogo providerId="epay" />,
 		);
+		const cryptomus = renderToStaticMarkup(
+			<PaymentProviderLogo providerId="cryptomus" />,
+		);
 		const github = renderToStaticMarkup(
 			<AuthProviderLogo providerId="github" />,
 		);
@@ -34,6 +37,8 @@ describe("provider logos", () => {
 		expect(stripe).toContain('fill="#635BFF"');
 		expect(gmpay).toContain('fill="#50AF95"');
 		expect(epay).toContain('stroke="#1677FF"');
+		expect(cryptomus).toContain('viewBox="0 0 32 36"');
+		expect(cryptomus).toContain('fill="currentColor"');
 		expect(github).toContain('fill="currentColor"');
 		expect(microsoft).toContain('fill="#F25022"');
 		expect(microsoft).toContain('fill="#00A4EF"');

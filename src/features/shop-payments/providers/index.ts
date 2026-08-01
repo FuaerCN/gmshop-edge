@@ -3,20 +3,25 @@ import type {
 	PaymentProviderAdapter,
 } from "#/features/shop-payments/provider";
 import { DomainError } from "#/lib/domain-error";
-import { createAlipayProvider } from "./alipay";
+import { createAutomaticAlipayProvider } from "./alipay";
+import { cryptomusPaymentProvider } from "./cryptomus";
 import { epayPaymentProvider } from "./epay";
 import { gmpayPaymentProvider } from "./gmpay";
 import { stripePaymentProvider } from "./stripe";
-import { createWechatPayProvider } from "./wechatpay";
+import { createAutomaticWechatPayProvider } from "./wechatpay";
+
+const automaticAlipayProvider = createAutomaticAlipayProvider();
+const automaticWechatPayProvider = createAutomaticWechatPayProvider();
 
 const providers: Record<PaymentProvider, PaymentProviderAdapter> = {
 	stripe: stripePaymentProvider,
+	cryptomus: cryptomusPaymentProvider,
 	gmpay: gmpayPaymentProvider,
 	epay: epayPaymentProvider,
-	alipay_page: createAlipayProvider("FAST_INSTANT_TRADE_PAY"),
-	alipay_wap: createAlipayProvider("QUICK_WAP_WAY"),
-	wechat_native: createWechatPayProvider("native"),
-	wechat_h5: createWechatPayProvider("h5"),
+	alipay_page: automaticAlipayProvider,
+	alipay_wap: automaticAlipayProvider,
+	wechat_native: automaticWechatPayProvider,
+	wechat_h5: automaticWechatPayProvider,
 };
 
 export function getPaymentProvider(provider: string) {
@@ -30,6 +35,11 @@ export function getPaymentProvider(provider: string) {
 	return adapter;
 }
 
-export function paymentCheckoutPresentation(provider: string) {
+export function paymentCheckoutPresentation(
+	provider: string,
+	checkoutUrl?: string | null,
+) {
+	if ((provider === "wechat_native" || provider === "wechat_h5") && checkoutUrl)
+		return checkoutUrl.startsWith("weixin://") ? "qr" : "redirect";
 	return getPaymentProvider(provider).checkoutPresentation;
 }

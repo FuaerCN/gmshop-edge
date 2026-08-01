@@ -73,6 +73,7 @@ const createPaymentSchema = z.object({
 	successUrl: z.url(),
 	cancelUrl: z.url(),
 	payerIp: z.ipv4().nullable().default(null),
+	payerMobile: z.boolean().default(false),
 });
 
 export async function createShopPayment(
@@ -181,6 +182,7 @@ export async function createShopPayment(
 				defaultToken: context.default_token,
 				defaultNetwork: context.default_network,
 				payerIp: input.payerIp,
+				payerMobile: input.payerMobile,
 			},
 			credential,
 			fetcher,
@@ -270,6 +272,21 @@ export async function processShopPaymentEvent(
 		if (result.duplicate)
 			return presentPaymentReplayReceipt(result.duplicate, event);
 		return { duplicate: true, status: "processed" };
+	}
+	if (event.type === "payment_pending") {
+		const result = await runPaymentEventBatch(db, channelId, event, [
+			paymentEventStatement(
+				db,
+				channelId,
+				context.attempt_id,
+				event,
+				"processed",
+				Date.now(),
+			),
+		]);
+		if (result.duplicate)
+			return presentPaymentReplayReceipt(result.duplicate, event);
+		return { duplicate: false, status: "pending" };
 	}
 	if (event.type !== "payment_succeeded") {
 		const status = event.type === "payment_expired" ? "expired" : "failed";
@@ -560,6 +577,7 @@ function validateEventMoney(
 		);
 	}
 	const expectedMerchantOrderIds = new Set([
+		context.attempt_id,
 		context.order_number,
 		epusdtMerchantOrderId(context.attempt_id),
 	]);

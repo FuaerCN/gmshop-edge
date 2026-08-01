@@ -272,7 +272,10 @@ function presentPayment(row: Record<string, unknown>) {
 		failureCode: row.failure_code == null ? null : String(row.failure_code),
 		channelName: String(row.channel_name),
 		provider: String(row.provider),
-		checkoutPresentation: paymentCheckoutPresentation(String(row.provider)),
+		checkoutPresentation: paymentCheckoutPresentation(
+			String(row.provider),
+			row.checkout_url == null ? null : String(row.checkout_url),
+		),
 	};
 }
 function presentDelivery(row: Record<string, unknown>) {

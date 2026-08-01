@@ -3,7 +3,7 @@ import { handleTelegramUpdate } from "./bot";
 import {
 	constantTimeStringEqual,
 	deriveTelegramWebhookSecret,
-	telegramDataKeyId,
+	telegramWebhookSigningKeyId,
 } from "./secret";
 import { telegramRuntime } from "./sync";
 
@@ -21,17 +21,17 @@ export async function processTelegramWebhook(
 	const { runtime, settings, provider } = await telegramRuntime(db);
 	if (
 		settings.status !== "active" ||
-		!runtime.dataEncryptionSecret ||
+		!runtime.automationCallbackSecret ||
 		!provider?.telegramBotToken ||
 		!settings.syncedBotUserId ||
 		provider.revision !== settings.syncedRevision ||
-		(await telegramDataKeyId(runtime.dataEncryptionSecret)) !==
+		(await telegramWebhookSigningKeyId(runtime.automationCallbackSecret)) !==
 			settings.syncedDataKeyId ||
 		safeOrigin(runtime.betterAuthUrl) !== settings.syncedOrigin
 	)
 		return { accepted: false, inactive: true };
 	const expectedSecret = await deriveTelegramWebhookSecret(
-		runtime.dataEncryptionSecret,
+		runtime.automationCallbackSecret,
 		settings.syncedBotUserId,
 		settings.syncedRevision,
 	);

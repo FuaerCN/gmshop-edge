@@ -166,6 +166,7 @@ export const checkoutStoreOrderFn = createServerFn({ method: "POST" })
 				successUrl: `${origin}${orderPath}`,
 				cancelUrl: `${origin}${orderPath}`,
 				payerIp: request.headers.get("cf-connecting-ip"),
+				payerMobile: isMobilePaymentRequest(request),
 			});
 			return { order, payment, accountOrder: Boolean(account) };
 		} catch (error) {
@@ -252,5 +253,13 @@ export const retryStorePaymentFn = createServerFn({ method: "POST" })
 			successUrl: `${origin}${orderPath}`,
 			cancelUrl: `${origin}${orderPath}`,
 			payerIp: request.headers.get("cf-connecting-ip"),
+			payerMobile: isMobilePaymentRequest(request),
 		});
 	});
+
+function isMobilePaymentRequest(request: Request) {
+	if (request.headers.get("sec-ch-ua-mobile") === "?1") return true;
+	return /Android|iPhone|iPad|iPod|Mobile/i.test(
+		request.headers.get("user-agent") ?? "",
+	);
+}

@@ -303,6 +303,38 @@ describe("shop payment fulfillment", { timeout: 30_000 }, () => {
 		});
 	});
 
+	it("records a pending provider event without ending the payment attempt", async () => {
+		await expect(
+			processShopPaymentEvent(database, channelId, {
+				...succeededEvent("cryptomus:pending"),
+				type: "payment_pending",
+			}),
+		).resolves.toEqual({ duplicate: false, status: "pending" });
+		const state = await paymentState(database);
+		expect(state).toEqual({
+			order_status: "pending_payment",
+			payment_status: "pending",
+			receipts: 1,
+			deliveries: 0,
+		});
+	});
+
+	it("fails a wrong-amount event without allocating stock or fulfillment", async () => {
+		await expect(
+			processShopPaymentEvent(database, channelId, {
+				...succeededEvent("cryptomus:wrong_amount"),
+				type: "payment_failed",
+			}),
+		).resolves.toEqual({ duplicate: false, status: "failed" });
+		const state = await paymentState(database);
+		expect(state).toEqual({
+			order_status: "pending_payment",
+			payment_status: "failed",
+			receipts: 1,
+			deliveries: 0,
+		});
+	});
+
 	it("never allocates the final card to two concurrent payments", async () => {
 		const secondOrderId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 		const secondItemId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -461,6 +493,20 @@ function succeededEvent(
 		currency: "CNY",
 		payloadDigest: `digest-${providerEventId}`,
 	};
+}
+
+async function paymentState(database: D1Database) {
+	return database
+		.prepare(
+			`SELECT o.status AS order_status, pa.status AS payment_status,
+			 (SELECT COUNT(*) FROM replay_receipts
+			  WHERE namespace = 'payment_webhook') AS receipts,
+			 (SELECT COUNT(*) FROM delivery_records) AS deliveries
+			 FROM shop_orders o JOIN payment_attempts pa ON pa.id = ?
+			 WHERE o.id = ?`,
+		)
+		.bind(attemptId, orderId)
+		.first<Record<string, unknown>>();
 }
 
 async function seedPayment(database: D1Database) {

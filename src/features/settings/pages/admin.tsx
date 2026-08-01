@@ -367,7 +367,7 @@ function settingsSchema(
 	return selected.map((field) => ({
 		name: field.key,
 		label: field.label,
-		tooltip: field.description,
+		tooltip: multilineDescription(field.description),
 		valueType:
 			field.type === "switch"
 				? ("switch" as const)
@@ -405,6 +405,20 @@ function settingsSchema(
 							}
 						: undefined,
 	}));
+}
+
+function multilineDescription(description: string) {
+	const lines = description.split("\n");
+	if (lines.length === 1) return description;
+	return (
+		<span className="block text-start">
+			{lines.map((line) => (
+				<span className="block" key={line}>
+					{line}
+				</span>
+			))}
+		</span>
+	);
 }
 
 const durationFields = {

@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { systemPermission } from "#/features/access/system-rbac";
 import {
 	alipayCredentialSchema,
+	cryptomusCredentialSchema,
 	epayCredentialSchema,
 	gmpayCredentialSchema,
 	type PaymentProvider,
@@ -77,8 +78,17 @@ export const listPaymentChannelsFn = createServerFn({ method: "GET" })
 				)
 				.bind(...bindings, data.pageSize, data.pageIndex * data.pageSize),
 		]);
+		const runtime = await loadRuntimeConfig(db.$client);
 		return {
-			data: ((rows?.results ?? []) as ChannelRow[]).map(presentChannel),
+			data: await Promise.all(
+				((rows?.results ?? []) as ChannelRow[]).map(async (row) => ({
+					...presentChannel(row),
+					paymentMethod: await channelPaymentMethod(
+						row,
+						runtime.commerceSecret,
+					),
+				})),
+			),
 			total: Number(
 				(count?.results[0] as { total?: unknown } | undefined)?.total ?? 0,
 			),
@@ -455,7 +465,34 @@ async function channelCredential(
 	current: string | null,
 	db: D1Database,
 ) {
-	const value = credentialValue(data);
+	let value = credentialValue(data);
+	if (
+		!value &&
+		current &&
+		(data.provider === "gmpay" || data.provider === "epay")
+	) {
+		const runtime = await loadRuntimeConfig(db);
+		if (!runtime.commerceSecret)
+			throw new DomainError(
+				"payment_secret_unavailable",
+				503,
+				"Payment configuration unavailable",
+			);
+		const schema =
+			data.provider === "gmpay" ? gmpayCredentialSchema : epayCredentialSchema;
+		value = {
+			...schema.parse(
+				JSON.parse(
+					await decryptSecret(
+						current,
+						runtime.commerceSecret,
+						"payment-credential",
+					),
+				),
+			),
+			paymentMethod: data.epusdtPaymentMethod,
+		};
+	}
 	if (!value) {
 		if (current) return current;
 		throw new DomainError(
@@ -479,6 +516,13 @@ async function channelCredential(
 }
 
 function credentialValue(data: z.output<typeof paymentChannelInputSchema>) {
+	if (data.provider === "cryptomus") {
+		if (!data.cryptomusMerchantId && !data.cryptomusPaymentApiKey) return null;
+		return cryptomusCredentialSchema.parse({
+			merchantId: data.cryptomusMerchantId,
+			paymentApiKey: data.cryptomusPaymentApiKey,
+		});
+	}
 	if (data.provider === "stripe") {
 		if (!data.stripeSecretKey && !data.stripeWebhookSecret) return null;
 		return stripeCredentialSchema.parse({
@@ -530,7 +574,31 @@ function credentialValue(data: z.output<typeof paymentChannelInputSchema>) {
 		baseUrl: data.epusdtBaseUrl,
 		pid: data.epusdtPid,
 		secretKey: data.epusdtSecretKey,
+		paymentMethod: data.epusdtPaymentMethod,
 	});
+}
+
+async function channelPaymentMethod(
+	row: ChannelRow,
+	commerceSecret: string | null,
+) {
+	if (row.provider !== "gmpay" && row.provider !== "epay") return "";
+	if (!commerceSecret || !row.credential_encrypted) return "alipay";
+	try {
+		const schema =
+			row.provider === "gmpay" ? gmpayCredentialSchema : epayCredentialSchema;
+		return schema.parse(
+			JSON.parse(
+				await decryptSecret(
+					row.credential_encrypted,
+					commerceSecret,
+					"payment-credential",
+				),
+			),
+		).paymentMethod;
+	} catch {
+		return "alipay";
+	}
 }
 
 function presentChannel(row: ChannelRow) {

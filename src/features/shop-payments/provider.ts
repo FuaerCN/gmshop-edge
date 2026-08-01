@@ -3,6 +3,7 @@ import { isSafeWebhookUrl } from "#/lib/webhook-url";
 
 export const paymentProviderValues = [
 	"stripe",
+	"cryptomus",
 	"gmpay",
 	"epay",
 	"alipay_page",
@@ -13,6 +14,7 @@ export const paymentProviderValues = [
 export type PaymentProvider = (typeof paymentProviderValues)[number];
 export type PaymentProviderFamily =
 	| "stripe"
+	| "cryptomus"
 	| "gmpay"
 	| "epay"
 	| "alipay"
@@ -41,6 +43,7 @@ export type CreatePaymentInput = {
 	defaultToken: string;
 	defaultNetwork: string;
 	payerIp: string | null;
+	payerMobile?: boolean;
 };
 
 export type CreatedPayment = {
@@ -71,7 +74,11 @@ export type PaymentRefund = {
 export type PaymentWebhookEvent = {
 	providerEventId: string;
 	providerPaymentId: string;
-	type: "payment_succeeded" | "payment_failed" | "payment_expired";
+	type:
+		| "payment_pending"
+		| "payment_succeeded"
+		| "payment_failed"
+		| "payment_expired";
 	amountMinor: string | null;
 	amountDecimal?: string | null;
 	currency: string | null;
@@ -115,6 +122,11 @@ export const stripeCredentialSchema = z.object({
 	webhookSecret: z.string().startsWith("whsec_").max(512),
 });
 
+export const cryptomusCredentialSchema = z.object({
+	merchantId: z.string().uuid(),
+	paymentApiKey: z.string().trim().min(8).max(512),
+});
+
 const epusdtCredentialFields = {
 	baseUrl: z
 		.url()
@@ -129,17 +141,26 @@ function epusdtCredentialSchema() {
 	return z.object(epusdtCredentialFields);
 }
 
-export const gmpayCredentialSchema = epusdtCredentialSchema();
-export const epayCredentialSchema = epusdtCredentialSchema().superRefine(
-	(value, context) => {
+const paymentMethodSchema = z
+	.string()
+	.trim()
+	.toLowerCase()
+	.regex(/^[a-z][a-z0-9_-]{0,39}$/)
+	.default("alipay");
+
+export const gmpayCredentialSchema = epusdtCredentialSchema().extend({
+	paymentMethod: paymentMethodSchema,
+});
+export const epayCredentialSchema = epusdtCredentialSchema()
+	.extend({ paymentMethod: paymentMethodSchema })
+	.superRefine((value, context) => {
 		if (/^\d+$/.test(value.pid)) return;
 		context.addIssue({
 			code: "custom",
 			path: ["pid"],
 			message: "EPay requires a numeric PID",
 		});
-	},
-);
+	});
 
 export const alipayCredentialSchema = z.object({
 	appId: z

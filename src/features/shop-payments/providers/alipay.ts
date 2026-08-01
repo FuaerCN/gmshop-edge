@@ -227,6 +227,21 @@ export function createAlipayProvider(
 	};
 }
 
+export function createAutomaticAlipayProvider(): PaymentProviderAdapter {
+	const desktop = createAlipayProvider("FAST_INSTANT_TRADE_PAY");
+	const mobile = createAlipayProvider("QUICK_WAP_WAY");
+	return {
+		...desktop,
+		createPayment(input, credential, fetcher) {
+			return (input.payerMobile ? mobile : desktop).createPayment(
+				input,
+				credential,
+				fetcher,
+			);
+		},
+	};
+}
+
 async function callAlipay<T>(
 	credential: z.output<typeof alipayCredentialSchema>,
 	method: string,

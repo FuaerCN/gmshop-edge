@@ -27,9 +27,17 @@ export const paymentChannelInputSchema = z
 		enabled: z.boolean(),
 		stripeSecretKey: z.string().trim().max(512).optional(),
 		stripeWebhookSecret: z.string().trim().max(512).optional(),
+		cryptomusMerchantId: z.string().trim().max(64).optional(),
+		cryptomusPaymentApiKey: z.string().trim().max(512).optional(),
 		epusdtBaseUrl: z.string().trim().max(2_048).optional(),
 		epusdtPid: z.string().trim().max(80).optional(),
 		epusdtSecretKey: z.string().max(512).optional(),
+		epusdtPaymentMethod: z
+			.string()
+			.trim()
+			.toLowerCase()
+			.regex(/^[a-z][a-z0-9_-]{0,39}$/)
+			.default("alipay"),
 		alipayAppId: z.string().trim().max(32).optional(),
 		alipaySellerId: z.string().trim().max(32).optional(),
 		alipayPrivateKeyPem: z.string().max(8_192).optional(),
@@ -49,6 +57,29 @@ export const paymentChannelInputSchema = z
 				path: value.defaultToken ? ["defaultNetwork"] : ["defaultToken"],
 				message: "Default token and network must be configured together",
 			});
+		const changingCryptomus = Boolean(
+			value.cryptomusMerchantId || value.cryptomusPaymentApiKey,
+		);
+		if (value.provider === "cryptomus") {
+			if (!value.id || changingCryptomus) {
+				if (!z.string().uuid().safeParse(value.cryptomusMerchantId).success)
+					context.addIssue({
+						code: "custom",
+						path: ["cryptomusMerchantId"],
+						message: "Cryptomus merchant UUID is required",
+					});
+				if (
+					!value.cryptomusPaymentApiKey ||
+					value.cryptomusPaymentApiKey.length < 8
+				)
+					context.addIssue({
+						code: "custom",
+						path: ["cryptomusPaymentApiKey"],
+						message: "Cryptomus payment API key is required",
+					});
+			}
+			return;
+		}
 		const changingStripe =
 			Boolean(value.stripeSecretKey) || Boolean(value.stripeWebhookSecret);
 		if (
