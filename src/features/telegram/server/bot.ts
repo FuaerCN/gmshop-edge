@@ -704,13 +704,13 @@ function appKeyboard(origin: string, locale: SupportedLocale) {
 
 function appInlineKeyboard(origin: string, locale: SupportedLocale) {
 	return new InlineKeyboard()
+		.webApp(buttonLabel("orders", locale), miniAppUrl(origin, "orders"))
+		.webApp(buttonLabel("account", locale), miniAppUrl(origin, "account"))
+		.row()
 		.webApp(
 			{ text: buttonLabel("shop", locale), style: "primary" },
 			miniAppUrl(origin, "shop"),
 		)
-		.webApp(buttonLabel("orders", locale), miniAppUrl(origin, "orders"))
-		.row()
-		.webApp(buttonLabel("account", locale), miniAppUrl(origin, "account"))
 		.text(
 			{ text: m.telegram_button_support({}, { locale }), style: "success" },
 			"support:open",
