@@ -50,10 +50,7 @@ export const epayPaymentProvider: PaymentProviderAdapter = {
 			new Set(["sign", "sign_type"]),
 		);
 		const response = await fetcher(
-			epusdtUrl(
-				credential.baseUrl,
-				"/payments/epay/v1/order/create-transaction/submit.php",
-			),
+			epusdtUrl(credential.baseUrl, "/submit.php"),
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/x-www-form-urlencoded" },

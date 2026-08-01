@@ -110,7 +110,8 @@ describe("shop payment providers", () => {
 
 	it("creates EPay redirects and verifies its GET callback", async () => {
 		const fetcher = vi.fn(
-			async (_input: RequestInfo | URL, init?: RequestInit) => {
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				expect(String(input)).toBe("https://pay.example.com/submit.php");
 				expect(init?.redirect).toBe("manual");
 				const body = new URLSearchParams(String(init?.body));
 				expect(body.get("type")).toBe("alipay");
