@@ -3,6 +3,7 @@ import { z } from "zod";
 import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { getStoreSessionUser } from "#/features/storefront/server/account";
 import { encryptSecret } from "#/lib/secrets";
+import { m } from "#/paraglide/messages";
 import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import { loadTelegramSettings } from "../settings";
 import {
@@ -537,25 +538,44 @@ function formatDiagnostics(
 ) {
 	const device = parseDevice(request.headers.get("user-agent"));
 	const cf = (request as Request & { cf?: Record<string, unknown> }).cf ?? {};
+	const locale = input.diagnostics.locale;
+	const options = { locale } as const;
+	const unknown = m.telegram_web_support_unknown({}, options);
 	const line = (value: unknown) =>
 		typeof value === "string" && value.trim()
 			? value.trim().slice(0, 100)
-			: "Unknown";
-	return [
-		"Web support conversation",
-		"",
-		`Email: ${email}`,
-		`Visitor: ${input.fingerprint ? input.fingerprint.visitorId.slice(0, 12) : input.visitorId.slice(0, 12)}`,
-		`Possible repeat visitor: ${repeated ? "yes" : "no"}`,
-		`Browser: ${device.browser}`,
-		`System: ${device.system}`,
-		`Device: ${device.device}`,
-		`Language: ${input.diagnostics.locale}`,
-		`Time zone: ${input.diagnostics.timeZone}`,
-		`IP: ${trustedClientIp(request)}`,
-		`Location: ${[line(cf.country), line(cf.region), line(cf.city)].join(" · ")}`,
-		`Network: AS${typeof cf.asn === "number" ? cf.asn : "?"} ${line(cf.asOrganization)}`,
-	].join("\n");
+			: unknown;
+	const deviceType =
+		device.deviceType === "desktop"
+			? m.telegram_web_support_device_desktop({}, options)
+			: device.deviceType === "phone"
+				? m.telegram_web_support_device_phone({}, options)
+				: device.deviceType === "tablet"
+					? m.telegram_web_support_device_tablet({}, options)
+					: m.telegram_web_support_device_unknown({}, options);
+	const localizedDevice = device.deviceDetails
+		? `${deviceType} · ${device.deviceDetails}`
+		: deviceType;
+	const ip = trustedClientIp(request);
+	return m.telegram_web_support_diagnostics(
+		{
+			email,
+			visitor: input.fingerprint
+				? input.fingerprint.visitorId.slice(0, 12)
+				: input.visitorId.slice(0, 12),
+			repeated: repeated
+				? m.telegram_web_support_yes({}, options)
+				: m.telegram_web_support_no({}, options),
+			browser: device.browser === "Unknown" ? unknown : device.browser,
+			system: device.system === "Unknown" ? unknown : device.system,
+			device: localizedDevice,
+			timeZone: input.diagnostics.timeZone,
+			ip: ip === "unknown" ? unknown : ip,
+			location: [line(cf.country), line(cf.region), line(cf.city)].join(" · "),
+			network: `AS${typeof cf.asn === "number" ? cf.asn : "?"} ${line(cf.asOrganization)}`,
+		},
+		options,
+	);
 }
 
 function trustedClientIp(request: Request) {

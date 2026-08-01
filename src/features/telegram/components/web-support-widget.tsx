@@ -41,6 +41,7 @@ function formatMessageTime(timestamp: number) {
 export function WebSupportWidget() {
 	const session = authClient.useSession();
 	const [available, setAvailable] = useState(false);
+	const [supportEnabled, setSupportEnabled] = useState(false);
 	const [open, setOpen] = useState(false);
 	const [status, setStatus] = useState<string | null>(null);
 	const [email, setEmail] = useState("");
@@ -61,6 +62,7 @@ export function WebSupportWidget() {
 		])
 			.then(([result, localMessages]) => {
 				setAvailable(result.enabled || result.hasConversation);
+				setSupportEnabled(result.enabled);
 				setStatus(result.status);
 				setMessages(localMessages);
 				lastSequence.current = Math.max(
@@ -336,7 +338,14 @@ export function WebSupportWidget() {
 									{error}
 								</p>
 							) : null}
-							{status !== "closed" ? (
+							{status === "closed" && supportEnabled ? (
+								<form className="border-t p-3" onSubmit={startConversation}>
+									<Button className="w-full" disabled={busy}>
+										{busy ? <LoaderCircle className="animate-spin" /> : null}
+										{busy ? m.web_support_reopening() : m.web_support_reopen()}
+									</Button>
+								</form>
+							) : status !== "closed" ? (
 								<form
 									className="border-t pb-[env(safe-area-inset-bottom)]"
 									onSubmit={sendMessage}

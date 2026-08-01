@@ -47,26 +47,30 @@ export function parseDevice(userAgent: string | null) {
 			browser: "Unknown",
 			system: "Unknown",
 			device: "Unknown device",
+			deviceType: "unknown" as const,
+			deviceDetails: undefined,
 		};
 	const parsed = Bowser.parse(ua);
 	const browser = formatParsedName(parsed.browser.name, parsed.browser.version);
 	const system = formatParsedName(parsed.os.name, parsed.os.version);
 	const category =
 		parsed.platform.type === "mobile"
-			? "Phone"
+			? ({ label: "Phone", type: "phone" } as const)
 			: parsed.platform.type === "tablet"
-				? "Tablet"
+				? ({ label: "Tablet", type: "tablet" } as const)
 				: parsed.platform.type === "desktop"
-					? "Desktop"
-					: "Unknown device";
+					? ({ label: "Desktop", type: "desktop" } as const)
+					: ({ label: "Unknown device", type: "unknown" } as const);
 	const details = sanitizeDeviceDetails(
 		[parsed.platform.vendor, parsed.platform.model].filter(Boolean).join(" ") ||
-			(category === "Desktop" ? parsed.os.name : undefined),
+			(category.type === "desktop" ? parsed.os.name : undefined),
 	);
 	return {
 		browser,
 		system,
-		device: details ? `${category} · ${details}` : category,
+		device: details ? `${category.label} · ${details}` : category.label,
+		deviceType: category.type,
+		deviceDetails: details,
 	};
 }
 
