@@ -6,7 +6,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
 import { Switch } from "#/components/pro/base/fields/checkbox";
-import { ModalForm, ProSchemaForm } from "#/components/pro/form";
+import {
+	formBooleanValue,
+	ModalForm,
+	ProSchemaForm,
+} from "#/components/pro/form";
 import { Button } from "#/components/ui/button";
 import { ExchangeRatesTable } from "#/features/exchange-rates/pages/admin";
 import { settingsErrorMessage } from "#/features/settings/error-message";
@@ -434,7 +438,7 @@ function durationUnit(key: SettingKey) {
 }
 
 function normalizeValue(value: unknown, type: Field["type"]): SettingValue {
-	if (type === "switch") return value === true;
+	if (type === "switch") return formBooleanValue(value);
 	if (type === "number") return Number(value);
 	if (type === "origins")
 		return String(value ?? "")

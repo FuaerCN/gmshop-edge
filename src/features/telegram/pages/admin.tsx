@@ -108,7 +108,7 @@ function SupportSettingsModal({
 					data: {
 						autoSyncEnabled: data.autoSyncEnabled,
 						autoSyncIntervalMs: data.autoSyncIntervalMs,
-						supportEnabled: values.supportEnabled === true,
+						supportEnabled: formBooleanValue(values.supportEnabled),
 						supportChatId: String(values.supportChatId ?? "").trim() || null,
 						idleTimeoutMs: Number(values.idleMinutes) * 60_000,
 					},
