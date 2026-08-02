@@ -48,6 +48,7 @@ export function Select({
 	createControl = "action",
 	createOptionLabel,
 	createInputPlaceholder,
+	caseSensitiveValues = false,
 	className,
 	ariaLabel,
 }: {
@@ -72,6 +73,7 @@ export function Select({
 	createControl?: "action" | "input";
 	createOptionLabel?: (value: string) => ReactNode;
 	createInputPlaceholder?: string;
+	caseSensitiveValues?: boolean;
 	className?: string;
 	ariaLabel?: string;
 }) {
@@ -88,9 +90,8 @@ export function Select({
 	const canCreateOption =
 		allowCreate &&
 		normalizedSearchValue.length > 0 &&
-		!(options ?? []).some(
-			(option) =>
-				option.value.toLowerCase() === normalizedSearchValue.toLowerCase(),
+		!(options ?? []).some((option) =>
+			valuesEqual(option.value, normalizedSearchValue, caseSensitiveValues),
 		);
 	const createActionLabel =
 		normalizedSearchValue.length > 0
@@ -126,9 +127,8 @@ export function Select({
 			return;
 		}
 
-		const existingValue = selectedValues.find(
-			(selectedValue) =>
-				selectedValue.toLowerCase() === normalizedOptionValue.toLowerCase(),
+		const existingValue = selectedValues.find((selectedValue) =>
+			valuesEqual(selectedValue, normalizedOptionValue, caseSensitiveValues),
 		);
 		const nextValues = existingValue
 			? selectedValues.filter(
@@ -440,6 +440,12 @@ export function Select({
 			</SelectPrimitive.Portal>
 		</SelectPrimitive.Root>
 	);
+}
+
+function valuesEqual(left: string, right: string, caseSensitive: boolean) {
+	return caseSensitive
+		? left === right
+		: left.toLowerCase() === right.toLowerCase();
 }
 
 export function shouldSearchSelectOptions(

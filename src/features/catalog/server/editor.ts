@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import type { z } from "zod";
+import { z } from "zod";
 import { systemPermission } from "#/features/access/system-rbac";
 import {
 	productContentInputSchema,
@@ -24,47 +24,38 @@ export const createProductDraftFn = createServerFn({ method: "POST" })
 		const context = await getAdminServerContext(
 			systemPermission("products", "create"),
 		);
-		const id = crypto.randomUUID();
-		const now = Date.now();
-		const token = crypto.randomUUID();
-		const tags = data.tagNames.map((name) => ({
-			id: stableTagId(normalizeTag(name)),
-			name,
-			normalized: normalizeTag(name),
-		}));
-		await context.db.$client.batch([
-			context.db.$client
-				.prepare(
-					`INSERT INTO products
-					 (id, name, description, product_type, status, revision, revision_token, sort_order, created_at, updated_at)
-					 VALUES (?, ?, ?, ?, 'draft', 1, ?,
-					 COALESCE((SELECT MAX(sort_order) + 100 FROM products), 100), ?, ?)`,
-				)
-				.bind(
-					id,
-					data.name,
-					data.description,
-					data.productType,
-					token,
-					now,
-					now,
-				),
-			...tags.flatMap((tag) => [
-				context.db.$client
-					.prepare(
-						`INSERT INTO product_tags (id, name, normalized_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(normalized_name) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
-					)
-					.bind(tag.id, tag.name, tag.normalized, now, now),
-				context.db.$client
-					.prepare(
-						"INSERT INTO product_tag_links (id, product_id, tag_id, created_at) VALUES (?, ?, ?, ?)",
-					)
-					.bind(crypto.randomUUID(), id, tag.id, now),
-			]),
-			audit(context, "product.draft_created", "product", id, now),
-		]);
-		return { id, revision: 1 };
+		return createProductDraft(context, data);
 	});
+
+export async function createProductDraft(
+	context: EditorContext,
+	data: z.infer<typeof productCreateInputSchema>,
+) {
+	const id = crypto.randomUUID();
+	const now = Date.now();
+	const token = crypto.randomUUID();
+	await context.db.$client.batch([
+		context.db.$client
+			.prepare(
+				`INSERT INTO products
+					 (id, name, description, tag_names, product_type, status, revision, revision_token, sort_order, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, ?, 'draft', 1, ?,
+					 COALESCE((SELECT MAX(sort_order) + 100 FROM products), 100), ?, ?)`,
+			)
+			.bind(
+				id,
+				data.name,
+				data.description,
+				JSON.stringify(data.tagNames),
+				data.productType,
+				token,
+				now,
+				now,
+			),
+		audit(context, "product.draft_created", "product", id, now),
+	]);
+	return { id, revision: 1 };
+}
 
 export const duplicateProductFn = createServerFn({ method: "POST" })
 	.validator((input: z.input<typeof productEditorIdSchema>) =>
@@ -87,18 +78,11 @@ export async function duplicateProduct(
 		.first<Row>();
 	if (!source)
 		throw new DomainError("product_not_found", 404, "Product not found");
-	const [tagLinks, sellableItems] = await Promise.all([
-		all(
-			context,
-			"SELECT tag_id FROM product_tag_links WHERE product_id = ?",
-			sourceProductId,
-		),
-		all(
-			context,
-			"SELECT * FROM product_sellable_items WHERE product_id = ?",
-			sourceProductId,
-		),
-	]);
+	const sellableItems = await all(
+		context,
+		"SELECT * FROM product_sellable_items WHERE product_id = ?",
+		sourceProductId,
+	);
 	const productId = crypto.randomUUID();
 	if (
 		sellableItems.some((row) => String(row.fulfillment_source) === "supplier")
@@ -116,25 +100,19 @@ export async function duplicateProduct(
 		context.db.$client
 			.prepare(
 				`INSERT INTO products
-					 (id, name, description, product_type, status, revision, revision_token, sort_order, created_at, updated_at)
-					 VALUES (?, ?, ?, ?, 'draft', 1, ?, COALESCE((SELECT MAX(sort_order) + 100 FROM products), 100), ?, ?)`,
+					 (id, name, description, tag_names, product_type, status, revision, revision_token, sort_order, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, ?, 'draft', 1, ?, COALESCE((SELECT MAX(sort_order) + 100 FROM products), 100), ?, ?)`,
 			)
 			.bind(
 				productId,
 				`${String(source.name)} (Copy)`,
 				source.description ?? null,
+				source.tag_names,
 				source.product_type,
 				crypto.randomUUID(),
 				now,
 				now,
 			),
-		...tagLinks.map((row) =>
-			context.db.$client
-				.prepare(
-					"INSERT INTO product_tag_links (id, product_id, tag_id, created_at) VALUES (?, ?, ?, ?)",
-				)
-				.bind(crypto.randomUUID(), productId, row.tag_id, now),
-		),
 	];
 	for (const [index, row] of sellableItems.entries()) {
 		const sellableItemId = requiredMappedId(sellableItemIds, row.id);
@@ -192,16 +170,11 @@ export const getProductEditorFn = createServerFn({ method: "GET" })
 		const context = await getAdminServerContext(
 			systemPermission("products", "read"),
 		);
-		const [product, tags, sellableItems] = await Promise.all([
+		const [product, sellableItems] = await Promise.all([
 			context.db.$client
 				.prepare("SELECT * FROM products WHERE id = ? LIMIT 1")
 				.bind(data.productId)
 				.first<Row>(),
-			all(
-				context,
-				`SELECT tag.name FROM product_tag_links link JOIN product_tags tag ON tag.id = link.tag_id WHERE link.product_id = ? ORDER BY tag.name`,
-				data.productId,
-			),
 			all(
 				context,
 				`SELECT item.*, binding.id AS supplier_binding_id,
@@ -232,7 +205,9 @@ export const getProductEditorFn = createServerFn({ method: "GET" })
 					| "stock"
 					| "download"
 					| "automation",
-				tagNames: tags.map((tag) => String(tag.name)),
+				tagNames: z
+					.array(z.string())
+					.parse(JSON.parse(String(product.tag_names))),
 				status: String(product.status) as "draft" | "active" | "trashed",
 				revision: Number(product.revision),
 				coverObjectKey: product.cover_object_key
@@ -338,39 +313,20 @@ export const saveProductContentFn = createServerFn({ method: "POST" })
 			data.expectedRevision,
 		);
 		const now = Date.now();
-		const tags = data.tagNames.map((name) => ({
-			id: stableTagId(normalizeTag(name)),
-			name,
-			normalized: normalizeTag(name),
-		}));
 		await context.db.$client.batch([
 			context.db.$client
 				.prepare(
-					"UPDATE products SET name = ?, description = ?, product_type = ?, cover_object_key = ?, status = 'draft', updated_at = ? WHERE id = ?",
+					"UPDATE products SET name = ?, description = ?, tag_names = ?, product_type = ?, cover_object_key = ?, status = 'draft', updated_at = ? WHERE id = ?",
 				)
 				.bind(
 					data.name,
 					data.description,
+					JSON.stringify(data.tagNames),
 					data.productType,
 					data.coverObjectKey,
 					now,
 					data.productId,
 				),
-			context.db.$client
-				.prepare("DELETE FROM product_tag_links WHERE product_id = ?")
-				.bind(data.productId),
-			...tags.flatMap((tag) => [
-				context.db.$client
-					.prepare(
-						`INSERT INTO product_tags (id, name, normalized_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(normalized_name) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
-					)
-					.bind(tag.id, tag.name, tag.normalized, now, now),
-				context.db.$client
-					.prepare(
-						"INSERT INTO product_tag_links (id, product_id, tag_id, created_at) VALUES (?, ?, ?, ?)",
-					)
-					.bind(crypto.randomUUID(), data.productId, tag.id, now),
-			]),
 			audit(context, "product.content_updated", "product", data.productId, now),
 		]);
 		return { id: data.productId, revision };
@@ -906,9 +862,6 @@ async function all(
 		.all<Row>();
 	return result.results;
 }
-function normalizeTag(value: string) {
-	return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
-}
 function inferRenewalMode(policy: {
 	durationMs: number | null;
 	usageLimit: number | null;
@@ -932,9 +885,6 @@ function inferEmailMode(policy: {
 		policy.usageLimit == null &&
 		policy.accessLimit == null;
 	return contentSafe ? ("content" as const) : ("link" as const);
-}
-function stableTagId(normalized: string) {
-	return `tag:${normalized}`;
 }
 function audit(
 	context: EditorContext,

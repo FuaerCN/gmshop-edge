@@ -471,7 +471,6 @@ export function ProductEditorPage({
 				});
 			else await query.refetch();
 		},
-		onError: showError,
 	});
 	const publish = useMutation({
 		mutationFn: (publishValue: boolean) => {
@@ -579,6 +578,7 @@ export function ProductEditorPage({
 							<FormItem label={m.catalog_tags()}>
 								<ProSelect
 									allowCreate
+									caseSensitiveValues
 									createControl="input"
 									multiple
 									onChange={(value) =>

@@ -1,6 +1,14 @@
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { duplicateProduct } from "#/features/catalog/server/editor";
+import {
+	createBuildConfigurationDraft,
+	newBuildDefinition,
+} from "#/features/builds/configuration-draft";
+import { saveBuildConfiguration } from "#/features/builds/server/admin";
+import {
+	createProductDraft,
+	duplicateProduct,
+} from "#/features/catalog/server/editor";
 import { applyMigrations } from "./migrations";
 
 const mocked = vi.hoisted(() => ({ db: undefined as D1Database | undefined }));
@@ -12,7 +20,7 @@ vi.mock("#/server/context", () => ({
 	}),
 }));
 
-describe("product draft duplication", { timeout: 30_000 }, () => {
+describe("catalog product persistence", { timeout: 30_000 }, () => {
 	let miniflare: Miniflare;
 	let db: D1Database;
 
@@ -60,6 +68,84 @@ describe("product draft duplication", { timeout: 30_000 }, () => {
 			inventory: 0,
 		});
 	});
+
+	it("stores arbitrary tag names directly on the product", async () => {
+		const result = await createProductDraft(
+			{
+				db: { $client: db },
+				currentUser: { id: ADMIN_ID },
+				request: new Request("https://gmshop.example/admin/products/new"),
+			} as never,
+			{
+				name: "Tagged draft",
+				description: null,
+				productType: "stock",
+				tagNames: ["Legacy Tag", "New  Tag"],
+			},
+		);
+		const tags = await db
+			.prepare("SELECT tag_names FROM products WHERE id = ?")
+			.bind(result.id)
+			.first<{ tag_names: string }>();
+		expect(JSON.parse(tags?.tag_names ?? "[]")).toEqual([
+			"Legacy Tag",
+			"New  Tag",
+		]);
+	});
+
+	it("saves custom inputs for a newly created automation product", async () => {
+		const product = await createProductDraft(
+			{
+				db: { $client: db },
+				currentUser: { id: ADMIN_ID },
+				request: new Request("https://gmshop.example/admin/products/new"),
+			} as never,
+			{
+				name: "Automation draft",
+				description: null,
+				productType: "automation",
+				tagNames: ["Build service"],
+			},
+		);
+		const sellableItemId = crypto.randomUUID();
+		await db
+			.prepare(
+				`INSERT INTO product_sellable_items
+				 (id, product_id, name, price_minor, created_at, updated_at)
+				 VALUES (?, ?, 'Default', '1000', 1, 1)`,
+			)
+			.bind(sellableItemId, product.id)
+			.run();
+		const draft = createBuildConfigurationDraft();
+		await saveBuildConfiguration(
+			db,
+			{
+				...draft,
+				productId: product.id,
+				deliveryComponentId: sellableItemId,
+				repositoryOwner: "gmshop",
+				repositoryName: "automation-product",
+				credential: "test-token",
+				definitions: [
+					{
+						...newBuildDefinition(0),
+						key: "deploy_region",
+						name: "Deploy region",
+					},
+				],
+			},
+			{ actorUserId: ADMIN_ID },
+		);
+		const definition = await db
+			.prepare(
+				`SELECT json_extract(schema_json, '$[0].name') AS name
+				 FROM product_definition_versions WHERE product_id = ? LIMIT 1`,
+			)
+			.bind(product.id)
+			.first<{ name: string }>();
+
+		expect(definition?.name).toBe("Deploy region");
+	});
 });
 
 const ADMIN_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -74,6 +160,10 @@ async function seed(db: D1Database) {
 		 (id, name, email, email_verified, enabled, created_at, updated_at)
 		 VALUES (?, 'Admin', 'admin@example.com', 1, 1, ?, ?)`)
 			.bind(ADMIN_ID, now, now),
+		db.prepare(
+			`INSERT INTO system_settings (key, value, is_secret, created_at, updated_at)
+			 VALUES ('runtime.data_encryption_secret', '"commerce-test-secret"', 1, 1, 1)`,
+		),
 		db
 			.prepare(
 				"INSERT INTO products (id, name, product_type, status, created_at, updated_at) VALUES (?, 'Stock', 'stock', 'active', ?, ?)",

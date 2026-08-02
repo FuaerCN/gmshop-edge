@@ -64,6 +64,16 @@ describe("local acceptance seed contract", () => {
 			expect(source).toContain(`"${policy}"`);
 	});
 
+	it("upserts product tag names without the removed tag tables", async () => {
+		const source = await readFile(seedSourceUrl, "utf8");
+
+		expect(source).toMatch(
+			/INSERT INTO products[\s\S]*?tag_names[\s\S]*?ON CONFLICT\(id\) DO UPDATE SET[\s\S]*?tag_names = excluded\.tag_names/,
+		);
+		expect(source).not.toContain("product_tags");
+		expect(source).not.toContain("product_tag_links");
+	});
+
 	it("exposes one local seed command for acceptance, R2, and Telegram fixtures", async () => {
 		const packageJson = JSON.parse(await readFile(packageUrl, "utf8")) as {
 			scripts: Record<string, string>;
@@ -78,6 +88,16 @@ describe("local acceptance seed contract", () => {
 		expect(await readFile(seedSourceUrl, "utf8")).toContain(
 			"seedTelegramMiniAppUser",
 		);
+	});
+
+	it("seeds the Telegram fixture directly without a running app server", async () => {
+		const source = await readFile(seedSourceUrl, "utf8");
+
+		expect(source).not.toContain("await fetch(");
+		expect(source).not.toContain("runtime.better_auth_url");
+		expect(source).toContain("INSERT INTO users");
+		expect(source).toContain("INSERT INTO accounts");
+		expect(source).toContain("ON CONFLICT(provider_id, account_id)");
 	});
 
 	it("provides enabled local payment channels with encrypted fake credentials", async () => {
@@ -162,8 +182,8 @@ describe("local acceptance seed contract", () => {
 		expect(source).toContain('const customerPassword = "root@example.com"');
 		expect(source).toContain("await hashPassword(customerPassword)");
 		expect(source).toContain("enabled root user");
-		expect(source).not.toContain("INSERT INTO users");
-		expect(source).not.toContain("INSERT INTO accounts");
+		expect(source).toContain("fixtureOwners.find");
+		expect(source).toContain("customerUserId");
 		expect(source).toContain("UPDATE accounts SET password");
 		expect(source).toContain("Local root login:");
 	});
@@ -232,9 +252,6 @@ describe("local acceptance seed contract", () => {
 		expect(source).toContain("putKvValue");
 		expect(source).toContain("demo-acg-sku-premium");
 		expect(source).toContain("demo-dujiao-sku-year");
-		expect(source.match(/await fetch\(/g)).toHaveLength(1);
-		expect(source).toContain("/api/auth/telegram/miniapp/signin");
-		expect(source).toContain("localAuthOrigin");
 	});
 });
 
@@ -257,7 +274,7 @@ async function readPaymentChannels(source: string) {
 			"\nfunction wechatCredential(",
 		),
 		sourceSection(source, "function wechatCredential(", "\nfunction uuid("),
-		sourceSection(source, "function uuid(", "\nfunction linkId("),
+		sourceSection(source, "function uuid(", "\nfunction q("),
 		"return paymentChannels;",
 	].join("\n");
 	const transpiled = ts.transpileModule(executableSource, {

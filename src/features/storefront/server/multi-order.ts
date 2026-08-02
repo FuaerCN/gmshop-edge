@@ -743,23 +743,24 @@ async function eligibleLines(db: D1Database, couponId: string, lines: Line[]) {
 		.first<{ scope_json: string }>();
 	const scope = coupon
 		? parseCouponScope(coupon.scope_json)
-		: { productIds: [], tagIds: [] };
-	if (!scope.productIds.length && !scope.tagIds.length) return lines;
+		: { productIds: [], tagNames: [] };
+	if (!scope.productIds.length && !scope.tagNames.length) return lines;
 	const products = new Set(scope.productIds);
-	const tags = new Set(scope.tagIds);
+	const tags = new Set(scope.tagNames);
 	const tagProducts = new Set<string>();
 	if (tags.size > 0) {
-		const tagIds = [...tags];
+		const tagNames = [...tags];
 		const productIds = [
 			...new Set(lines.map((line) => line.sellableItem.product_id)),
 		];
 		const matches = await db
 			.prepare(
-				`SELECT DISTINCT product_id FROM product_tag_links
-				 WHERE tag_id IN (${tagIds.map(() => "?").join(", ")})
-				 AND product_id IN (${productIds.map(() => "?").join(", ")})`,
+				`SELECT DISTINCT product.id AS product_id
+				 FROM products product, json_each(product.tag_names) tag
+				 WHERE tag.value IN (${tagNames.map(() => "?").join(", ")})
+				 AND product.id IN (${productIds.map(() => "?").join(", ")})`,
 			)
-			.bind(...tagIds, ...productIds)
+			.bind(...tagNames, ...productIds)
 			.all<{ product_id: string }>();
 		for (const match of matches.results) tagProducts.add(match.product_id);
 	}

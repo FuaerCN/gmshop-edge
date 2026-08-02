@@ -54,13 +54,13 @@ export function StorefrontProductPage({ productId }: { productId: string }) {
 			"storefront",
 			"related-products",
 			productId,
-			product.data?.tags[0]?.id ?? "",
+			product.data?.tags[0] ?? "",
 		],
 		queryFn: () =>
 			listStorefrontCatalogFn({
 				data: {
 					search: "",
-					tag: product.data?.tags[0]?.id ?? "",
+					tag: product.data?.tags[0] ?? "",
 					sort: "featured",
 				},
 			}),
@@ -218,11 +218,11 @@ export function StorefrontProductPage({ productId }: { productId: string }) {
 				<div className="min-w-0 lg:sticky lg:top-26 lg:h-fit">
 					<div className="flex flex-wrap gap-2">
 						{data.tags.map((tag) => (
-							<Badge asChild key={tag.id} variant="secondary">
+							<Badge asChild key={tag} variant="secondary">
 								<a
-									href={`/?search=&tag=${encodeURIComponent(tag.id)}&sort=featured`}
+									href={`/?search=&tag=${encodeURIComponent(tag)}&sort=featured`}
 								>
-									{tag.name}
+									{tag}
 								</a>
 							</Badge>
 						))}
@@ -438,7 +438,7 @@ export function StorefrontProductPage({ productId }: { productId: string }) {
 							className="shrink-0 text-primary text-sm transition-opacity hover:opacity-70"
 							href={
 								data.tags[0]
-									? `/?search=&tag=${encodeURIComponent(data.tags[0].id)}&sort=featured`
+									? `/?search=&tag=${encodeURIComponent(data.tags[0])}&sort=featured`
 									: "/?search=&tag=&sort=featured"
 							}
 						>

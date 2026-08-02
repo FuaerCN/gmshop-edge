@@ -34,6 +34,7 @@ type CouponRow = {
 };
 
 const scopeIdsSchema = z.array(z.string().uuid());
+const scopeTagNamesSchema = z.array(z.string().trim().min(1).max(50));
 
 export const listCouponsFn = createServerFn({ method: "GET" })
 	.validator((input: z.input<typeof couponListSchema>) =>
@@ -93,11 +94,11 @@ export const saveCouponFn = createServerFn({ method: "POST" })
 				409,
 				"Coupon code already exists",
 			);
-		await assertScopeIds(db.$client, "products", data.productIds);
-		await assertScopeIds(db.$client, "product_tags", data.tagIds);
+		await assertProductIds(db.$client, data.productIds);
+		await assertTagNames(db.$client, data.tagNames);
 		const scopeJson = JSON.stringify({
 			productIds: [...new Set(data.productIds)].sort(),
-			tagIds: [...new Set(data.tagIds)].sort(),
+			tagNames: [...new Set(data.tagNames)].sort(),
 		});
 		const id = data.id ?? crypto.randomUUID();
 		const now = Date.now();
@@ -146,7 +147,7 @@ export const saveCouponFn = createServerFn({ method: "POST" })
 				after: {
 					...data,
 					productIds: data.productIds,
-					tagIds: data.tagIds,
+					tagNames: data.tagNames,
 				},
 			}),
 		]);
@@ -218,15 +219,11 @@ export const deleteCouponFn = createServerFn({ method: "POST" })
 		return { id: data.id };
 	});
 
-async function assertScopeIds(
-	db: D1Database,
-	table: "products" | "product_tags",
-	ids: string[],
-) {
+async function assertProductIds(db: D1Database, ids: string[]) {
 	if (ids.length === 0) return;
 	const result = await db
 		.prepare(
-			`SELECT id FROM ${table} WHERE id IN (${ids.map(() => "?").join(",")})`,
+			`SELECT id FROM products WHERE id IN (${ids.map(() => "?").join(",")})`,
 		)
 		.bind(...ids)
 		.all();
@@ -238,19 +235,37 @@ async function assertScopeIds(
 		);
 }
 
+async function assertTagNames(db: D1Database, names: string[]) {
+	if (names.length === 0) return;
+	const result = await db
+		.prepare(
+			`SELECT DISTINCT tag.value AS name
+			 FROM products product, json_each(product.tag_names) tag
+			 WHERE tag.value IN (${names.map(() => "?").join(",")})`,
+		)
+		.bind(...names)
+		.all();
+	if (result.results.length !== names.length)
+		throw new DomainError(
+			"coupon_scope_invalid",
+			400,
+			"Coupon scope contains an unknown tag",
+		);
+}
+
 function presentCoupon(row: CouponRow) {
 	const scope = scopeIdsSchema
 		.or(
 			z.object({
 				productIds: scopeIdsSchema,
-				tagIds: scopeIdsSchema,
+				tagNames: scopeTagNamesSchema,
 			}),
 		)
 		.safeParse(JSON.parse(row.scope_json));
 	const scopeValue =
 		scope.success && !Array.isArray(scope.data)
 			? scope.data
-			: { productIds: [], tagIds: [] };
+			: { productIds: [], tagNames: [] };
 	return {
 		id: row.id,
 		code: row.code,
@@ -269,7 +284,7 @@ function presentCoupon(row: CouponRow) {
 		endsAt: row.ends_at,
 		enabled: Boolean(row.enabled),
 		productIds: scopeValue.productIds,
-		tagIds: scopeValue.tagIds,
+		tagNames: scopeValue.tagNames,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};

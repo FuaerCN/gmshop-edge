@@ -2,10 +2,11 @@ import { z } from "zod";
 
 export const couponTypes = ["fixed", "percentage"] as const;
 const idSchema = z.string().uuid();
+const tagNameSchema = z.string().trim().min(1).max(50);
 export const couponScopeSchema = z
 	.object({
 		productIds: z.array(idSchema).max(100).transform(uniqueValues),
-		tagIds: z.array(idSchema).max(100).transform(uniqueValues),
+		tagNames: z.array(tagNameSchema).max(100).transform(uniqueValues),
 	})
 	.strict();
 const optionalMoney = z
@@ -50,7 +51,7 @@ export const couponInputSchema = z
 		endsAt: z.number().int().positive().nullable().optional(),
 		enabled: z.boolean().default(true),
 		productIds: z.array(idSchema).max(100).transform(uniqueValues),
-		tagIds: z.array(idSchema).max(100).transform(uniqueValues),
+		tagNames: z.array(tagNameSchema).max(100).transform(uniqueValues),
 	})
 	.superRefine((value, context) => {
 		if (

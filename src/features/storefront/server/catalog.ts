@@ -23,16 +23,15 @@ export const listStorefrontCatalogFn = createServerFn({ method: "GET" })
 		const bindings: string[] = [];
 		if (search) {
 			filters.push(`(p.name LIKE ? OR p.description LIKE ? OR EXISTS (
-				SELECT 1 FROM product_tag_links search_link
-				JOIN product_tags search_tag ON search_tag.id = search_link.tag_id
-				WHERE search_link.product_id = p.id AND search_tag.name LIKE ?
+				SELECT 1 FROM json_each(p.tag_names) search_tag
+				WHERE search_tag.value LIKE ?
 			))`);
 			bindings.push(search, search, search);
 		}
 		if (data.tag) {
 			filters.push(`EXISTS (
-				SELECT 1 FROM product_tag_links filter_link
-				WHERE filter_link.product_id = p.id AND filter_link.tag_id = ?
+				SELECT 1 FROM json_each(p.tag_names) filter_tag
+				WHERE filter_tag.value = ?
 			)`);
 			bindings.push(data.tag);
 		}
@@ -45,12 +44,15 @@ export const listStorefrontCatalogFn = createServerFn({ method: "GET" })
 		}[data.sort];
 		const [tags, products] = await db.batch([
 			db.prepare(
-				`SELECT tag.id, tag.name, COUNT(DISTINCT link.product_id) AS product_count FROM product_tags tag JOIN product_tag_links link ON link.tag_id = tag.id JOIN products p ON p.id = link.product_id AND p.status = 'active' GROUP BY tag.id ORDER BY product_count DESC, tag.name, tag.id`,
+				`SELECT tag.value AS name, COUNT(DISTINCT product.id) AS product_count
+				 FROM products product, json_each(product.tag_names) tag
+				 WHERE product.status = 'active'
+				 GROUP BY tag.value ORDER BY product_count DESC, tag.value`,
 			),
 			db
 				.prepare(`SELECT p.id, p.name, p.description, p.product_type,
 			 p.cover_object_key, p.updated_at,
-			 COALESCE((SELECT json_group_array(json_object('id', tag.id, 'name', tag.name)) FROM product_tag_links link JOIN product_tags tag ON tag.id = link.tag_id WHERE link.product_id = p.id), '[]') AS tags_json,
+			 p.tag_names AS tags_json,
 			 s.id AS sellable_item_id, s.price_minor, s.list_price_minor, s.currency, s.currency_decimals,
 			 (SELECT ps.price_minor FROM product_sellable_items ps
 			  WHERE ps.product_id = p.id AND ps.enabled = 1
@@ -69,7 +71,6 @@ export const listStorefrontCatalogFn = createServerFn({ method: "GET" })
 		]);
 		return {
 			tags: rows(tags).map((row) => ({
-				id: String(row.id),
 				name: String(row.name),
 				productCount: Number(row.product_count),
 			})),
@@ -81,10 +82,7 @@ export const listStorefrontCatalogFn = createServerFn({ method: "GET" })
 					| "stock"
 					| "download"
 					| "automation",
-				tags: JSON.parse(String(row.tags_json)) as Array<{
-					id: string;
-					name: string;
-				}>,
+				tags: JSON.parse(String(row.tags_json)) as string[],
 				coverUrl: row.cover_object_key
 					? `/api/shop/products/${row.id}/cover?v=${row.updated_at}`
 					: null,
@@ -148,10 +146,7 @@ export const getStorefrontProductFn = createServerFn({ method: "GET" })
 				| "stock"
 				| "download"
 				| "automation",
-			tags: JSON.parse(String(product.tags_json)) as Array<{
-				id: string;
-				name: string;
-			}>,
+			tags: JSON.parse(String(product.tags_json)) as string[],
 			coverUrl: product.cover_object_key
 				? `/api/shop/products/${product.id}/cover?v=${product.updated_at}`
 				: null,

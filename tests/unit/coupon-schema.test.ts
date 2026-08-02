@@ -6,7 +6,7 @@ const base = {
 	name: "Save ten",
 	enabled: true,
 	productIds: [],
-	tagIds: [],
+	tagNames: [],
 };
 
 describe("coupon input contract", () => {

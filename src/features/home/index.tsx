@@ -107,12 +107,12 @@ export function HomePage({
 						{catalog.data?.tags.map((item) => (
 							<Button
 								className="shrink-0 rounded-full"
-								key={item.id}
+								key={item.name}
 								size="sm"
-								variant={searchParams.tag === item.id ? "default" : "ghost"}
+								variant={searchParams.tag === item.name ? "default" : "ghost"}
 								onClick={() =>
 									void navigate({
-										search: { ...searchParams, tag: item.id },
+										search: { ...searchParams, tag: item.name },
 									})
 								}
 							>

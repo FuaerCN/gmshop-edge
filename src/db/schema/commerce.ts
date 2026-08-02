@@ -25,26 +25,16 @@ const shopOrderStatusValues = [
 	"failed",
 ] as const;
 
-export const productTags = sqliteTable(
-	"product_tags",
-	{
-		id: text("id").primaryKey(),
-		name: text("name").notNull(),
-		normalizedName: text("normalized_name").notNull(),
-		...timestamps,
-	},
-	(table) => [
-		uniqueIndex("product_tags_normalized_name_uidx").on(table.normalizedName),
-		index("product_tags_name_idx").on(table.name),
-	],
-);
-
 export const products = sqliteTable(
 	"products",
 	{
 		id: text("id").primaryKey(),
 		name: text("name").notNull(),
 		description: text("description"),
+		tagNames: text("tag_names", { mode: "json" })
+			.$type<string[]>()
+			.notNull()
+			.default([]),
 		productType: text("product_type", {
 			enum: ["stock", "download", "automation"],
 		}).notNull(),
@@ -80,29 +70,6 @@ export const products = sqliteTable(
 			"products_product_type_check",
 			sql`${table.productType} IN ('stock', 'download', 'automation')`,
 		),
-	],
-);
-
-export const productTagLinks = sqliteTable(
-	"product_tag_links",
-	{
-		id: text("id").primaryKey(),
-		productId: text("product_id")
-			.notNull()
-			.references(() => products.id, { onDelete: "cascade" }),
-		tagId: text("tag_id")
-			.notNull()
-			.references(() => productTags.id, { onDelete: "cascade" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.notNull()
-			.default(sql`(unixepoch() * 1000)`),
-	},
-	(table) => [
-		uniqueIndex("product_tag_links_product_tag_uidx").on(
-			table.productId,
-			table.tagId,
-		),
-		index("product_tag_links_tag_product_idx").on(table.tagId, table.productId),
 	],
 );
 
@@ -1719,9 +1686,9 @@ export const coupons = sqliteTable(
 		usageLimitPerCustomer: integer("usage_limit_per_customer"),
 		usedCount: integer("used_count").notNull().default(0),
 		scopeJson: text("scope_json", { mode: "json" })
-			.$type<{ productIds: string[]; tagIds: string[] }>()
+			.$type<{ productIds: string[]; tagNames: string[] }>()
 			.notNull()
-			.default({ productIds: [], tagIds: [] }),
+			.default({ productIds: [], tagNames: [] }),
 		startsAt: integer("starts_at", { mode: "timestamp_ms" }),
 		endsAt: integer("ends_at", { mode: "timestamp_ms" }),
 		enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
@@ -1767,7 +1734,7 @@ export const coupons = sqliteTable(
 			"coupons_scope_json_check",
 			sql`json_valid(${table.scopeJson}) AND json_type(${table.scopeJson}) = 'object'
 				AND json_type(${table.scopeJson}, '$.productIds') = 'array'
-				AND json_type(${table.scopeJson}, '$.tagIds') = 'array'`,
+				AND json_type(${table.scopeJson}, '$.tagNames') = 'array'`,
 		),
 	],
 );

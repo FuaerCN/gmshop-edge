@@ -79,8 +79,8 @@ export function StorefrontProductCard({
 				<div className="flex flex-1 flex-col px-2 pt-4 pb-2">
 					<div className="flex min-h-5 flex-wrap gap-x-3 gap-y-1">
 						{product.tags.slice(0, 3).map((tag) => (
-							<Badge key={tag.id} variant="secondary">
-								{tag.name}
+							<Badge key={tag} variant="secondary">
+								{tag}
 							</Badge>
 						))}
 					</div>

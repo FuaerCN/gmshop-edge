@@ -323,6 +323,7 @@ export const importSupplierProductsFn = createServerFn({ method: "POST" })
 				crypto.randomUUID();
 			productIds.set(product.id, localProductId);
 			if (!existingProduct) {
+				const tagNames = uniqueCategoryNames(product.categoryNames);
 				const cover = await importProductCover(
 					context.env.FILES,
 					localProductId,
@@ -333,41 +334,21 @@ export const importSupplierProductsFn = createServerFn({ method: "POST" })
 					context.db
 						.prepare(
 							`INSERT INTO products
-							 (id, name, description, product_type, status,
+							 (id, name, description, tag_names, product_type, status,
 							  cover_object_key, created_at, updated_at)
-							 VALUES (?, ?, ?, 'stock', ?, ?, ?, ?)`,
+							 VALUES (?, ?, ?, ?, 'stock', ?, ?, ?, ?)`,
 						)
 						.bind(
 							localProductId,
 							product.name,
 							product.description,
+							JSON.stringify(tagNames),
 							data.publish ? "active" : "draft",
 							cover?.objectKey ?? null,
 							now,
 							now,
 						),
 				);
-				for (const categoryName of uniqueCategoryNames(product.categoryNames)) {
-					const normalized = normalizeTag(categoryName);
-					const tagId = stableTagId(normalized);
-					statements.push(
-						context.db
-							.prepare(
-								`INSERT INTO product_tags
-								 (id, name, normalized_name, created_at, updated_at)
-								 VALUES (?, ?, ?, ?, ?)
-								 ON CONFLICT(normalized_name) DO UPDATE
-								 SET name = excluded.name, updated_at = excluded.updated_at`,
-							)
-							.bind(tagId, categoryName, normalized, now, now),
-						context.db
-							.prepare(
-								`INSERT INTO product_tag_links
-								 (id, product_id, tag_id, created_at) VALUES (?, ?, ?, ?)`,
-							)
-							.bind(crypto.randomUUID(), localProductId, tagId, now),
-					);
-				}
 				if (cover)
 					statements.push(
 						context.db
@@ -772,14 +753,6 @@ function uniqueCategoryNames(values: string[]) {
 				.slice(0, 100),
 		),
 	];
-}
-
-function normalizeTag(value: string) {
-	return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
-}
-
-function stableTagId(normalized: string) {
-	return `tag:${normalized}`;
 }
 
 function presentSku(input: {

@@ -18,17 +18,8 @@ describe("storefront product content", { timeout: 30_000 }, () => {
 		await db.batch([
 			db.prepare(
 				`INSERT INTO products
-				 (id, name, description, product_type, status, created_at, updated_at)
-				 VALUES ('product', 'Base name', 'Base description', 'stock', 'active', 1, 1)`,
-			),
-			db.prepare(
-				`INSERT INTO product_tags
-				 (id, name, normalized_name, created_at, updated_at)
-				 VALUES ('tag-software', 'Software', 'software', 1, 1)`,
-			),
-			db.prepare(
-				`INSERT INTO product_tag_links (id, product_id, tag_id, created_at)
-				 VALUES ('tag-link', 'product', 'tag-software', 1)`,
+				 (id, name, description, tag_names, product_type, status, created_at, updated_at)
+				 VALUES ('product', 'Base name', 'Base description', '["Software"]', 'stock', 'active', 1, 1)`,
 			),
 		]);
 	});
@@ -41,8 +32,6 @@ describe("storefront product content", { timeout: 30_000 }, () => {
 			name: "Base name",
 			description: "Base description",
 		});
-		expect(JSON.parse(String(product?.tags_json))).toEqual([
-			{ id: "tag-software", name: "Software" },
-		]);
+		expect(JSON.parse(String(product?.tags_json))).toEqual(["Software"]);
 	});
 });

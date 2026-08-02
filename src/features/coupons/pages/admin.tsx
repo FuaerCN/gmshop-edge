@@ -145,10 +145,10 @@ export function CouponsPage() {
 				id: "scope",
 				header: m.coupons_scope(),
 				cell: ({ row }) =>
-					row.original.productIds.length || row.original.tagIds.length
+					row.original.productIds.length || row.original.tagNames.length
 						? m.coupons_scope_count({
 								products: row.original.productIds.length,
-								tags: row.original.tagIds.length,
+								tags: row.original.tagNames.length,
 							})
 						: m.coupons_scope_all(),
 			},
@@ -228,7 +228,7 @@ export function CouponsPage() {
 				endsAt: dateValue(values.endsAt),
 				enabled: formBooleanValue(values.enabled),
 				productIds: stringArray(values.productIds),
-				tagIds: stringArray(values.tagIds),
+				tagNames: stringArray(values.tagNames),
 			},
 		});
 	}
@@ -293,7 +293,7 @@ export function CouponsPage() {
 }
 
 function couponFormSchema(
-	tags: Array<{ id: string; name: string }>,
+	tags: Array<{ name: string }>,
 	products: Array<{ id: string; name: string }>,
 ) {
 	return [
@@ -358,12 +358,12 @@ function couponFormSchema(
 			valueType: "dateTime" as const,
 		},
 		{
-			name: "tagIds",
+			name: "tagNames",
 			label: m.coupons_tags(),
 			valueType: "multiSelect" as const,
 			fieldProps: {
 				options: tags.map((item) => ({
-					value: item.id,
+					value: item.name,
 					label: item.name,
 				})),
 				searchable: true,
@@ -392,7 +392,7 @@ const newCouponValues = {
 	currencyDecimals: "2",
 	enabled: true,
 	productIds: [],
-	tagIds: [],
+	tagNames: [],
 };
 
 function couponValues(coupon: Coupon) {
@@ -416,7 +416,7 @@ function couponValues(coupon: Coupon) {
 		endsAt: coupon.endsAt ? new Date(coupon.endsAt) : undefined,
 		enabled: coupon.enabled,
 		productIds: coupon.productIds,
-		tagIds: coupon.tagIds,
+		tagNames: coupon.tagNames,
 	};
 }
 

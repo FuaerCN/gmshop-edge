@@ -94,6 +94,21 @@ describe("catalog product editor creation flow", () => {
 		expect(editorSource).not.toContain("<BuildConfigurationInline");
 	});
 
+	it("reports a failed save once through the surrounding form", () => {
+		const mutationStart = editorSource.indexOf("const save = useMutation");
+		const publishMutationStart = editorSource.indexOf(
+			"const publish = useMutation",
+			mutationStart,
+		);
+		const saveMutation = editorSource.slice(
+			mutationStart,
+			publishMutationStart,
+		);
+
+		expect(saveMutation).not.toContain("onError: showError");
+		expect(editorSource).toContain("onFinishFailed={showError}");
+	});
+
 	it("removes the retired manual-delivery editor", () => {
 		expect(editorSource).not.toContain('component.type === "manual"');
 		expect(editorSource).not.toContain("ManualInputEditor");

@@ -121,7 +121,7 @@ async function seed(db: D1Database) {
 			`INSERT INTO coupons
 			 (id, code, name, type, value_bps, scope_json, created_at, updated_at)
 			 VALUES ('coupon', 'CLAIM', 'Claim fixture', 'percentage', 1000,
-			  '{"productIds":[],"tagIds":[]}', 1, 1)`,
+			  '{"productIds":[],"tagNames":[]}', 1, 1)`,
 		),
 		db.prepare(
 			`INSERT INTO shop_orders

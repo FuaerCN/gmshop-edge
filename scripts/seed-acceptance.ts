@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 import { hashPassword } from "better-auth/crypto";
+import { storefrontCustomerRoleName } from "#/features/access/storefront-access";
+import { telegramIdentityEmail } from "#/features/auth/identity-email";
 import {
 	authProviderSecretKey,
 	authProviderSecretPurpose,
@@ -42,7 +44,7 @@ const telegramBotUsername = "gmshop_local_bot";
 const telegramBotToken =
 	"777000:AAH_local_Telegram_Mini_App_fixture_token_2026";
 const telegramUserId = "777000123";
-const telegramEmail = `${telegramUserId}@telegram.invalid`;
+const telegramEmail = telegramIdentityEmail(telegramUserId);
 const persistToIndex = scriptArgs.indexOf("--persist-to");
 const persistTo =
 	persistToIndex >= 0 ? scriptArgs[persistToIndex + 1]?.trim() : undefined;
@@ -600,19 +602,25 @@ for (const channel of paymentChannels)
 		  last_checked_at = NULL, updated_at = excluded.updated_at`,
 	);
 
-for (const row of products)
+for (const row of products) {
+	const tagNames = [
+		"精选",
+		row.productType === "automation" ? "自动化服务" : "即时交付",
+	];
 	sql.push(
 		`INSERT INTO products
-		 (id, product_type, name, description, status, cover_object_key, revision, revision_token,
+		 (id, product_type, name, description, tag_names, status, cover_object_key, revision, revision_token,
 		  sort_order, created_at, updated_at)
-		 VALUES (${q(row.id)}, ${q(row.productType)}, ${q(row.name)}, ${q(row.description)}, ${q(row.status)},
+		 VALUES (${q(row.id)}, ${q(row.productType)}, ${q(row.name)}, ${q(row.description)}, ${q(JSON.stringify(tagNames))}, ${q(row.status)},
 		  ${q(withR2 ? (mediaFixtures.find((media) => media.productId === row.id)?.objectKey ?? null) : null)},
 		  1, lower(hex(randomblob(16))), ${row.sortOrder}, ${now}, ${now})
 		 ON CONFLICT(id) DO UPDATE SET name = excluded.name,
-		  description = excluded.description, status = excluded.status,
+		  description = excluded.description, tag_names = excluded.tag_names,
+		  status = excluded.status,
 		  cover_object_key = excluded.cover_object_key, sort_order = excluded.sort_order,
 		  updated_at = excluded.updated_at`,
 	);
+}
 
 for (const row of items) {
 	const delivery = componentsById.get(row.componentId);
@@ -720,30 +728,6 @@ for (const suffix of [4, 54, 60, 78, 79, 80, 81] as const)
 				: "required",
 	);
 
-const tags = [
-	["a1000000-0000-4000-8000-000000000001", "精选", "精选"],
-	["a1000000-0000-4000-8000-000000000002", "即时交付", "即时交付"],
-	["a1000000-0000-4000-8000-000000000003", "自动化服务", "自动化服务"],
-] as const;
-for (const [id, name, normalized] of tags)
-	sql.push(
-		`INSERT INTO product_tags (id, name, normalized_name, created_at, updated_at)
-		 VALUES (${q(id)}, ${q(name)}, ${q(normalized)}, ${now}, ${now})
-		 ON CONFLICT(id) DO UPDATE SET name = excluded.name,
-		  normalized_name = excluded.normalized_name, updated_at = excluded.updated_at`,
-	);
-for (const productRow of products) {
-	const deliveryTagId =
-		productRow.productType === "automation" ? tags[2][0] : tags[1][0];
-	const tagIds = [tags[0][0], deliveryTagId];
-	for (const [index, tagId] of tagIds.entries())
-		sql.push(
-			`INSERT INTO product_tag_links (id, product_id, tag_id, created_at)
-			 VALUES (${q(linkId(productRow.id, index))}, ${q(productRow.id)}, ${q(tagId)}, ${now})
-		 ON CONFLICT(product_id, tag_id) DO NOTHING`,
-		);
-}
-
 await addCustomerPurchaseFixtures(sql);
 await addSupplierFixtures(sql);
 await executeSql(sql.join(";\n"));
@@ -762,7 +746,6 @@ async function seedTelegramMiniAppUser() {
 	const telegramSettings = await queryRows(
 		`SELECT key, value FROM system_settings WHERE key IN (
 		 ${q("runtime.data_encryption_secret")},
-		 ${q("runtime.better_auth_url")},
 		 ${q(authProviderSettingKeys.providers)},
 		 ${q(authProviderSettingKeys.revision)},
 		 ${q(authProviderSecretKey("telegram"))}
@@ -771,9 +754,6 @@ async function seedTelegramMiniAppUser() {
 	const encryptionSecret = readSetting(
 		telegramSettings,
 		"runtime.data_encryption_secret",
-	);
-	const localOrigin = localAuthOrigin(
-		readSetting(telegramSettings, "runtime.better_auth_url"),
 	);
 	const existingTelegramSecret = telegramSettings.find(
 		(row) => row.key === authProviderSecretKey("telegram"),
@@ -836,32 +816,38 @@ ${upsertSetting(
 	false,
 )}
 ${upsertSetting(authProviderSettingKeys.telegramMiniAppEnabled, true, false)}
-${upsertSetting(authProviderSecretKey("telegram"), encryptedBotToken, true)}`,
+${upsertSetting(authProviderSecretKey("telegram"), encryptedBotToken, true)}
+INSERT INTO users
+ (id, name, email, email_verified, preferred_locale, image, telegram_id,
+  telegram_username, enabled, role_ids, created_at, updated_at)
+ VALUES (${q(uuid(22, 1))}, 'Telegram Local User', ${q(telegramEmail)}, 0,
+  'zh-CN', 'https://telegram.org/img/t_logo.png', ${q(telegramUserId)},
+  'local_tg_user', 1, (
+   SELECT json_array(id) FROM roles
+   WHERE name = ${q(storefrontCustomerRoleName)} AND built_in = 1 AND enabled = 1 LIMIT 1
+  ), ${now}, ${now})
+ ON CONFLICT(email) DO UPDATE SET
+  name = excluded.name,
+  preferred_locale = excluded.preferred_locale,
+  image = excluded.image,
+  telegram_id = excluded.telegram_id,
+  telegram_username = excluded.telegram_username,
+  enabled = excluded.enabled,
+  role_ids = excluded.role_ids,
+  disabled_at = NULL,
+  updated_at = excluded.updated_at;
+INSERT INTO accounts
+ (id, user_id, account_id, provider_id, telegram_id, telegram_username,
+  created_at, updated_at)
+ SELECT ${q(uuid(23, 1))}, id, ${q(telegramUserId)}, 'telegram',
+  ${q(telegramUserId)}, 'local_tg_user', ${now}, ${now}
+ FROM users WHERE email = ${q(telegramEmail)}
+ ON CONFLICT(provider_id, account_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  telegram_id = excluded.telegram_id,
+  telegram_username = excluded.telegram_username,
+  updated_at = excluded.updated_at;`,
 	);
-
-	const response = await fetch(
-		`${localOrigin}/api/auth/telegram/miniapp/signin`,
-		{
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: localOrigin,
-				"cf-connecting-ip": "127.0.0.1",
-				"user-agent": "gmshop-local-telegram-mini-app-fixture",
-			},
-			body: JSON.stringify({ initData: await signedTelegramInitData() }),
-		},
-	);
-	if (!response.ok) {
-		const details = (await response.text()).slice(0, 500);
-		throw new Error(
-			`Telegram Mini App sign-in failed (${response.status}): ${details}`,
-		);
-	}
-	if (
-		!response.headers.get("set-cookie")?.includes("better-auth.session_token")
-	)
-		throw new Error("Telegram Mini App sign-in did not create a session.");
 
 	const [user] = await queryRows(
 		`SELECT u.id, u.name, u.email, u.telegram_id, u.telegram_username
@@ -871,62 +857,8 @@ ${upsertSetting(authProviderSecretKey("telegram"), encryptedBotToken, true)}`,
 		 LIMIT 1`,
 	);
 	if (!user)
-		throw new Error(
-			"Telegram Mini App sign-in completed without a canonical user.",
-		);
+		throw new Error("Telegram Mini App fixture has no canonical user.");
 	return user;
-}
-
-async function signedTelegramInitData() {
-	const values = {
-		auth_date: String(Math.floor(Date.now() / 1_000)),
-		chat_instance: "7770001234567890123",
-		chat_type: "private",
-		query_id: `AAH-local-${crypto.randomUUID()}`,
-		user: JSON.stringify({
-			id: Number(telegramUserId),
-			is_bot: false,
-			first_name: "Telegram",
-			last_name: "Local User",
-			username: "local_tg_user",
-			language_code: "zh-CN",
-			is_premium: true,
-			allows_write_to_pm: true,
-			photo_url: "https://telegram.org/img/t_logo.png",
-		}),
-	};
-	const check = Object.entries(values)
-		.sort(([left], [right]) => left.localeCompare(right))
-		.map(([key, value]) => `${key}=${value}`)
-		.join("\n");
-	const encoder = new TextEncoder();
-	const secret = await hmac(
-		encoder.encode("WebAppData"),
-		encoder.encode(telegramBotToken),
-	);
-	const parameters = new URLSearchParams(values);
-	parameters.set("hash", bytesToHex(await hmac(secret, encoder.encode(check))));
-	return parameters.toString();
-}
-
-async function hmac(
-	key: Uint8Array<ArrayBuffer>,
-	value: Uint8Array<ArrayBuffer>,
-) {
-	const cryptoKey = await crypto.subtle.importKey(
-		"raw",
-		key,
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		["sign"],
-	);
-	return new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, value));
-}
-
-function bytesToHex(value: Uint8Array) {
-	return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(
-		"",
-	);
 }
 
 function upsertSetting(key: string, value: unknown, isSecret: boolean) {
@@ -937,15 +869,6 @@ function upsertSetting(key: string, value: unknown, isSecret: boolean) {
 	  value = excluded.value,
 	  is_secret = excluded.is_secret,
 	  updated_at = excluded.updated_at;`;
-}
-
-function localAuthOrigin(value: string) {
-	const url = new URL(value);
-	if (!["localhost", "127.0.0.1"].includes(url.hostname))
-		throw new Error(
-			`Refusing to seed through non-local BETTER_AUTH_URL origin ${url.origin}.`,
-		);
-	return url.origin;
 }
 
 function readJsonSetting<T>(rows: QueryRow[], key: string, fallback: T): T {
@@ -2028,11 +1951,6 @@ function wechatCredential(mode: "native" | "h5") {
 
 function uuid(prefix: number, suffix: number) {
 	return `${prefix.toString(16).padStart(8, "0")}-0000-4000-8000-${suffix.toString(16).padStart(12, "0")}`;
-}
-
-function linkId(productId: string, index: number) {
-	const suffix = Number.parseInt(productId.slice(-6), 16) * 10 + index + 1;
-	return uuid(13, suffix);
 }
 
 function q(value: string | number | null) {

@@ -43,9 +43,8 @@ export const listProductsFn = createServerFn({ method: "GET" })
 		const bindings: unknown[] = [];
 		if (search) {
 			conditions.push(`(p.name LIKE ? OR EXISTS (
-			 SELECT 1 FROM product_tag_links search_link
-			 JOIN product_tags search_tag ON search_tag.id = search_link.tag_id
-			 WHERE search_link.product_id = p.id AND search_tag.name LIKE ?))`);
+			 SELECT 1 FROM json_each(p.tag_names) search_tag
+			 WHERE search_tag.value LIKE ?))`);
 			bindings.push(search, search);
 		}
 		const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -74,11 +73,7 @@ export const listProductsFn = createServerFn({ method: "GET" })
 						  WHERE stock_item.product_id = p.id
 						   AND stock_item.enabled = 1
 						   AND secret.status = 'available') AS available_stock,
-						 COALESCE((SELECT json_group_array(tag.name)
-						  FROM product_tag_links tag_link
-						  JOIN product_tags tag ON tag.id = tag_link.tag_id
-						  WHERE tag_link.product_id = p.id
-						  ORDER BY tag.name), '[]') AS tags_json
+						 p.tag_names AS tags_json
 						 FROM products p
 					 LEFT JOIN product_sellable_items s ON s.product_id = p.id
 					 ${where}
@@ -135,11 +130,9 @@ export const listProductOptionsFn = createServerFn({ method: "GET" }).handler(
 		const [tags, products, sellableItems] = await Promise.all([
 			db
 				.prepare(
-					`SELECT tag.id, tag.name,
-					 COUNT(DISTINCT link.product_id) AS product_count
-					 FROM product_tags tag
-					 JOIN product_tag_links link ON link.tag_id = tag.id
-					 GROUP BY tag.id ORDER BY product_count DESC, name`,
+					`SELECT tag.value AS name, COUNT(DISTINCT product.id) AS product_count
+					 FROM products product, json_each(product.tag_names) tag
+					 GROUP BY tag.value ORDER BY product_count DESC, tag.value`,
 				)
 				.all(),
 			db
@@ -157,7 +150,6 @@ export const listProductOptionsFn = createServerFn({ method: "GET" }).handler(
 		]);
 		return {
 			tags: tags.results.map((row) => ({
-				id: String(row.id),
 				name: String(row.name),
 				productCount: Number(row.product_count),
 			})),
@@ -186,10 +178,11 @@ export const listProductTagOptionsFn = createServerFn({
 	const { db } = await adminContext(systemPermission("products", "read"));
 	const rows = await db
 		.prepare(
-			`SELECT id, name FROM product_tags
-			 ORDER BY name, id`,
+			`SELECT DISTINCT tag.value AS name
+			 FROM products product, json_each(product.tag_names) tag
+			 ORDER BY tag.value`,
 		)
-		.all<{ id: string; name: string }>();
+		.all<{ name: string }>();
 	return rows.results;
 });
 

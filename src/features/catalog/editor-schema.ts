@@ -9,6 +9,10 @@ export const deliveryComponentTypes = [
 
 const id = z.uuid();
 const nullablePositiveInt = z.number().int().positive().nullable();
+const productTagNamesSchema = z
+	.array(z.string().trim().min(1).max(50))
+	.max(20)
+	.transform((names) => [...new Set(names)]);
 const deliveryPolicySchema = z.object({
 	type: z.enum(deliveryComponentTypes),
 	durationMs: nullablePositiveInt,
@@ -23,7 +27,7 @@ const deliveryPolicySchema = z.object({
 const productContent = {
 	name: z.string().trim().min(1).max(160),
 	description: z.string().trim().max(50_000).nullable().default(null),
-	tagNames: z.array(z.string().trim().min(1).max(50)).max(20).default([]),
+	tagNames: productTagNamesSchema.default([]),
 };
 
 export const productEditorIdSchema = z.object({ productId: id });

@@ -36,6 +36,17 @@ describe("generic product editor schemas", () => {
 		).toBe(false);
 	});
 
+	it("trims only tag boundaries and removes exact duplicates", () => {
+		expect(
+			productCreateInputSchema.parse({
+				name: "Product",
+				productType: "stock",
+				description: null,
+				tagNames: [" Tag ", "Tag", "New  Tag"],
+			}).tagNames,
+		).toEqual(["Tag", "New  Tag"]);
+	});
+
 	it("requires at least one sellable item and accepts independent items", () => {
 		const input = {
 			productId,

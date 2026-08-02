@@ -22,6 +22,13 @@
       "when": 1785579370198,
       "tag": "0002_glamorous_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785673934610,
+      "tag": "0003_product_tag_names",
+      "breakpoints": true
     }
   ]
 }

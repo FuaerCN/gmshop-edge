@@ -837,7 +837,7 @@ async function seedStorefront(database: D1Database) {
 			  usage_limit, usage_limit_per_customer, used_count, scope_json,
 			  enabled, created_at, updated_at)
 			 VALUES ('${couponId}', 'SAVE25', 'Save 25%', 'percentage', 'CNY', 2,
-			  2500, 10, 1, 0, '{"productIds":["${productId}"],"tagIds":[]}', 1, 1, 1)`,
+			  2500, 10, 1, 0, '{"productIds":["${productId}"],"tagNames":[]}', 1, 1, 1)`,
 		),
 	]);
 }
