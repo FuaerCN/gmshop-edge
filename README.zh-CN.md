@@ -131,6 +131,18 @@ Worker；构建脚本不会将账号专属 ID 写入 `wrangler.jsonc`。请在 C
 部署完成后访问 Worker 地址的 `/install` 初始化实例。服务商秘密均从管理后台录入，禁止
 提交到仓库。
 
+## 保持 Fork 自动同步
+
+Fork 会包含 `Sync upstream` GitHub Actions 工作流。它每天 UTC 00:00 和 12:00 自动
+运行，也可以通过 **Actions → Sync upstream → Run workflow** 手动触发。工作流会自动
+识别 Fork 的上游仓库，并使用 GitHub 的 Fork 同步接口，将上游默认分支合并到 Fork 的
+默认分支。
+
+创建 Fork 后，请先打开其 **Actions** 页面并启用工作流；GitHub 默认不会直接启用新 Fork
+中的工作流。该工作流只为仓库的 `GITHUB_TOKEN` 申请 `contents: write` 权限，不需要配置
+Personal Access Token，也不会强推或覆盖 Fork 独有的提交。如果存在合并冲突，本次运行会
+失败；手动解决冲突后，自动同步即可继续。
+
 ## 快速开始
 
 ### 环境要求
