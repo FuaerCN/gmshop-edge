@@ -133,7 +133,7 @@ export const getStorefrontProductFn = createServerFn({ method: "GET" })
 				.bind(product.id),
 			db
 				.prepare(
-					"SELECT id, alt_text, created_at FROM product_media WHERE product_id = ? ORDER BY sort_order, id LIMIT 24",
+					"SELECT id, object_key, alt_text, created_at FROM product_media WHERE product_id = ? ORDER BY sort_order, id LIMIT 24",
 				)
 				.bind(product.id),
 		]);
@@ -155,6 +155,7 @@ export const getStorefrontProductFn = createServerFn({ method: "GET" })
 			media: rows(mediaResult).map((row) => ({
 				id: String(row.id),
 				altText: row.alt_text == null ? null : String(row.alt_text),
+				cover: row.object_key === product.cover_object_key,
 				url: `/api/shop/products/${product.id}/media/${row.id}?v=${row.created_at}`,
 			})),
 		};

@@ -97,7 +97,7 @@ export function StorefrontProductPage({ productId }: { productId: string }) {
 					},
 				]
 			: []),
-		...data.media.filter((media) => media.url !== data.coverUrl),
+		...data.media.filter((media) => !media.cover),
 	];
 	const selectedMedia =
 		gallery.find((media) => media.id === selectedMediaId) ?? gallery[0];
