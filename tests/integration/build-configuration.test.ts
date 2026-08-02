@@ -24,6 +24,10 @@ describe("automation configuration snapshots", { timeout: 30_000 }, () => {
 
 	it("publishes normalized immutable method and input snapshots", async () => {
 		const base = configuration();
+		const updatedDefinitionKey = `BUILD_INPUT_${crypto
+			.randomUUID()
+			.replaceAll("-", "_")
+			.toUpperCase()}`;
 		const [method] = base.methods;
 		if (!method) throw new Error("Build method fixture is required");
 		const first = await saveBuildConfiguration(database, base, {
@@ -36,6 +40,11 @@ describe("automation configuration snapshots", { timeout: 30_000 }, () => {
 				...base,
 				id: first.id,
 				credential: "",
+				definitions: base.definitions.map((definition, index) =>
+					index === 0
+						? { ...definition, key: updatedDefinitionKey }
+						: definition,
+				),
 				methods: [
 					{
 						...method,
@@ -70,6 +79,18 @@ describe("automation configuration snapshots", { timeout: 30_000 }, () => {
 		});
 		expect(String(state?.credential_encrypted)).not.toContain(
 			"github-token-secret",
+		);
+		const latestDefinition = await database
+			.prepare(
+				`SELECT schema_json FROM product_definition_versions
+				 WHERE product_id = ? ORDER BY version DESC LIMIT 1`,
+			)
+			.bind("11111111-1111-4111-8111-111111111111")
+			.first<{ schema_json: string }>();
+		expect(JSON.parse(latestDefinition?.schema_json ?? "[]")).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ key: updatedDefinitionKey }),
+			]),
 		);
 	});
 

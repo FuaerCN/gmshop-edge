@@ -74,12 +74,14 @@ export function BuildConfigurationFields({
 				<TextField
 					label={m.automation_configs_base_url()}
 					required
+					tooltip={m.automation_configs_base_url_tooltip()}
 					type="url"
 					value={draft.baseUrl}
 					onChange={(baseUrl) => onChange({ ...draft, baseUrl })}
 				/>
 				<RepositoryField
 					label={m.automation_configs_repository_name()}
+					tooltip={m.automation_configs_repository_name_tooltip()}
 					owner={draft.repositoryOwner}
 					name={draft.repositoryName}
 					onChange={(repositoryOwner, repositoryName) =>
@@ -95,12 +97,14 @@ export function BuildConfigurationFields({
 				<TextField
 					label={m.automation_configs_workflow()}
 					required
+					tooltip={m.automation_configs_workflow_tooltip()}
 					value={draft.workflowFile}
 					onChange={(workflowFile) => onChange({ ...draft, workflowFile })}
 				/>
 				<TextField
 					label={m.automation_configs_token()}
 					required={!draft.configured}
+					tooltip={m.automation_configs_token_tooltip()}
 					type="password"
 					value={draft.credential}
 					placeholder={
@@ -225,6 +229,7 @@ function MethodsEditor({
 						<TextField
 							label={m.automation_configs_key()}
 							required
+							tooltip={m.automation_configs_method_key_tooltip()}
 							value={method.key}
 							onChange={(key) => update(index, { key })}
 						/>
@@ -282,6 +287,7 @@ function MethodsEditor({
 							<TextField
 								label={m.automation_configs_output_pattern()}
 								required
+								tooltip={m.automation_configs_output_pattern_tooltip()}
 								value={method.outputPattern}
 								onChange={(outputPattern) => update(index, { outputPattern })}
 							/>
@@ -363,6 +369,7 @@ function DefinitionsEditor({
 								<TextField
 									label={m.automation_configs_key()}
 									required
+									tooltip={m.automation_configs_input_key_tooltip()}
 									value={definition.key}
 									onChange={(key) => update(index, { key })}
 								/>
@@ -388,6 +395,7 @@ function DefinitionsEditor({
 								/>
 								<SelectField
 									label={m.automation_configs_input_scope()}
+									tooltip={m.automation_configs_input_scope_tooltip()}
 									value={definition.scope}
 									options={scopeOptions()}
 									onChange={(scope) =>
@@ -411,6 +419,7 @@ function DefinitionsEditor({
 								/>
 								<TextField
 									label={m.automation_configs_validation_pattern()}
+									tooltip={m.automation_configs_validation_pattern_tooltip()}
 									value={definition.validationPattern}
 									onChange={(validationPattern) =>
 										update(index, { validationPattern })
@@ -528,6 +537,7 @@ function TextField({
 	required,
 	type = "text",
 	placeholder,
+	tooltip,
 }: {
 	label: ReactNode;
 	value: string;
@@ -535,9 +545,10 @@ function TextField({
 	required?: boolean;
 	type?: string;
 	placeholder?: string;
+	tooltip?: ReactNode;
 }) {
 	return (
-		<FormItem label={label} required={required}>
+		<FormItem label={label} required={required} tooltip={tooltip}>
 			<Input
 				type={type}
 				required={required}
@@ -554,11 +565,13 @@ function RepositoryField({
 	owner,
 	name,
 	onChange,
+	tooltip,
 }: {
 	label: ReactNode;
 	owner: string;
 	name: string;
 	onChange: (owner: string, name: string) => void;
+	tooltip?: ReactNode;
 }) {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const combined = [owner, name].filter(Boolean).join("/");
@@ -567,7 +580,7 @@ function RepositoryField({
 		if (document.activeElement !== inputRef.current) setValue(combined);
 	}, [combined]);
 	return (
-		<FormItem label={label} required>
+		<FormItem label={label} required tooltip={tooltip}>
 			<Input
 				onChange={(event) => {
 					const raw = event.target.value;
@@ -616,14 +629,16 @@ function SelectField({
 	value,
 	options,
 	onChange,
+	tooltip,
 }: {
 	label: ReactNode;
 	value: string;
 	options: Array<{ value: string; label: string }>;
 	onChange: (value: string) => void;
+	tooltip?: ReactNode;
 }) {
 	return (
-		<FormItem label={label}>
+		<FormItem label={label} tooltip={tooltip}>
 			<ProSelect
 				onChange={(next) => {
 					if (typeof next === "string") onChange(next);

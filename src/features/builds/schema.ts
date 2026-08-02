@@ -8,7 +8,7 @@ const keySchema = z
 	.trim()
 	.min(1)
 	.max(64)
-	.regex(/^[a-z][a-z0-9_]*$/);
+	.regex(/^[A-Za-z][A-Za-z0-9_]*$/);
 
 const methodSchema = z
 	.object({

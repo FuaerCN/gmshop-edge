@@ -126,7 +126,10 @@ export async function getStoreOrder(
 				  FROM entitlement_authorization_values value
 				  WHERE value.entitlement_id = ce.id), '{}') AS masks_json
 				 FROM customer_entitlements ce JOIN shop_order_items oi ON oi.id = ce.order_item_id
-				 JOIN product_definition_versions version ON version.id = ce.definition_version_id
+				 JOIN product_sellable_items item ON item.id = ce.sellable_item_id
+				  AND item.product_id = ce.product_id
+				 JOIN product_definition_versions version
+				  ON version.id = item.active_definition_version_id
 				 WHERE oi.order_id = ? AND ce.entitlement_type = 'automation'
 				 ORDER BY ce.created_at, ce.id`,
 			)

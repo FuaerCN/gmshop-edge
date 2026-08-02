@@ -14,6 +14,7 @@ import { createBuildJob } from "#/features/builds/server/jobs";
 import { fanOutPendingCommerceNotifications } from "#/features/notifications/server/fanout";
 import { hmacSha256Hex } from "#/features/shop-payments/signature";
 import { storeAutomationArtifactResponse } from "#/features/storefront/server/build-artifact-response";
+import { getStoreOrder } from "#/features/storefront/server/order-query";
 import { applyMigrations } from "./migrations";
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
@@ -409,6 +410,66 @@ describe("build lifecycle", { timeout: 30_000 }, () => {
 		await expect(
 			fanOutPendingCommerceNotifications(database),
 		).resolves.toMatchObject({ deliveries: 0 });
+		const currentDefinition = await database
+			.prepare(
+				`SELECT version.id, version.version, version.schema_json
+				 FROM product_sellable_items item
+				 JOIN product_definition_versions version
+				  ON version.id = item.active_definition_version_id
+				 WHERE item.id = ?`,
+			)
+			.bind(sellableItemId)
+			.first<{ id: string; version: number; schema_json: string }>();
+		if (!currentDefinition) throw new Error("Active definition is required");
+		const updatedDefinitionKey = `BUILD_INPUT_${crypto
+			.randomUUID()
+			.replaceAll("-", "_")
+			.toUpperCase()}`;
+		const updatedDefinitionId = crypto.randomUUID();
+		const updatedSchema = (
+			JSON.parse(currentDefinition.schema_json) as Array<
+				Record<string, unknown>
+			>
+		).map((definition) =>
+			definition.key === "channel"
+				? { ...definition, key: updatedDefinitionKey }
+				: definition,
+		);
+		const updatedAt = Date.now();
+		await database.batch([
+			database
+				.prepare(
+					`INSERT INTO product_definition_versions
+					 (id, product_id, sellable_item_id, version, schema_json, published_at,
+					  created_by, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, ?, ?, 'admin-user', ?, ?)`,
+				)
+				.bind(
+					updatedDefinitionId,
+					productId,
+					sellableItemId,
+					currentDefinition.version + 1,
+					JSON.stringify(updatedSchema),
+					updatedAt,
+					updatedAt,
+					updatedAt,
+				),
+			database
+				.prepare(
+					"UPDATE product_sellable_items SET active_definition_version_id = ?, updated_at = ? WHERE id = ?",
+				)
+				.bind(updatedDefinitionId, updatedAt, sellableItemId),
+		]);
+		const refreshedOrder = await getStoreOrder(
+			database,
+			{ orderNumber: "GM200001" },
+			customerAccess,
+		);
+		expect(refreshedOrder.automationRuns[0]?.definitions).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ key: updatedDefinitionKey }),
+			]),
+		);
 		const reused = await createBuildJob(
 			database,
 			{
@@ -417,7 +478,7 @@ describe("build lifecycle", { timeout: 30_000 }, () => {
 				methodId: method.id,
 				idempotencyKey: "build-lifecycle-reuse",
 				authorizationValues: {},
-				automationValues: { channel: "stable" },
+				automationValues: { [updatedDefinitionKey]: "stable" },
 			},
 			customerAccess,
 		);
@@ -430,9 +491,16 @@ describe("build lifecycle", { timeout: 30_000 }, () => {
 				 (SELECT COUNT(*) FROM automation_jobs WHERE id = ?
 				  AND json_extract(inputs_json, '$.license_key.authorizationValueId') IS NOT NULL) AS authorization_references,
 				 (SELECT COUNT(*) FROM automation_jobs WHERE id = ?
-				  AND json_extract(inputs_json, '$.channel.value') = 'stable') AS build_values`,
+				  AND definition_version_id = ?
+				  AND json_extract(inputs_json, ?) = 'stable') AS build_values`,
 			)
-			.bind(entitlementId, reused.id, reused.id)
+			.bind(
+				entitlementId,
+				reused.id,
+				reused.id,
+				updatedDefinitionId,
+				`$.${updatedDefinitionKey}.value`,
+			)
 			.first<Record<string, unknown>>();
 		expect(reuseState).toEqual({
 			authorization_values: 1,
@@ -521,7 +589,7 @@ describe("build lifecycle", { timeout: 30_000 }, () => {
 			methodId: method.id,
 			idempotencyKey,
 			authorizationValues: {},
-			automationValues: { channel: "stable" },
+			automationValues: { [updatedDefinitionKey]: "stable" },
 		});
 		await expect(
 			createBuildJob(

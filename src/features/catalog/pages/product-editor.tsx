@@ -575,7 +575,10 @@ export function ProductEditorPage({
 									value={name}
 								/>
 							</FormItem>
-							<FormItem label={m.catalog_tags()}>
+							<FormItem
+								label={m.catalog_tags()}
+								tooltip={m.catalog_tags_tooltip()}
+							>
 								<ProSelect
 									allowCreate
 									caseSensitiveValues
@@ -957,7 +960,11 @@ function SellableItemsEditor({
 									value={sellableItem.name}
 								/>
 							</FormItem>
-							<FormItem label={m.catalog_price_minor()} required>
+							<FormItem
+								label={m.catalog_price_minor()}
+								required
+								tooltip={m.catalog_price_minor_tooltip()}
+							>
 								<MoneyField
 									currency={sellableItem.currency}
 									decimals={sellableItem.currencyDecimals}
@@ -974,7 +981,10 @@ function SellableItemsEditor({
 									symbol={moneySymbol}
 								/>
 							</FormItem>
-							<FormItem label={m.catalog_list_price_minor()}>
+							<FormItem
+								label={m.catalog_list_price_minor()}
+								tooltip={m.catalog_list_price_minor_tooltip()}
+							>
 								<MoneyField
 									currency={sellableItem.currency}
 									decimals={sellableItem.currencyDecimals}
@@ -991,7 +1001,10 @@ function SellableItemsEditor({
 								/>
 							</FormItem>
 							{sellableItem.fulfillmentSource === "local" ? (
-								<FormItem label={m.catalog_cost_minor()}>
+								<FormItem
+									label={m.catalog_cost_minor()}
+									tooltip={m.catalog_cost_minor_tooltip()}
+								>
 									<MoneyField
 										currency={sellableItem.currency}
 										decimals={sellableItem.currencyDecimals}
@@ -1008,7 +1021,10 @@ function SellableItemsEditor({
 									/>
 								</FormItem>
 							) : null}
-							<FormItem label={m.catalog_minimum_quantity()}>
+							<FormItem
+								label={m.catalog_minimum_quantity()}
+								tooltip={m.catalog_minimum_quantity_tooltip()}
+							>
 								<Input
 									min={1}
 									onChange={(event) =>
@@ -1023,7 +1039,10 @@ function SellableItemsEditor({
 									value={sellableItem.minimumQuantity}
 								/>
 							</FormItem>
-							<FormItem label={m.catalog_maximum_quantity()}>
+							<FormItem
+								label={m.catalog_maximum_quantity()}
+								tooltip={m.catalog_maximum_quantity_tooltip()}
+							>
 								<Input
 									min={1}
 									onChange={(event) =>
@@ -1038,7 +1057,10 @@ function SellableItemsEditor({
 									value={sellableItem.maximumQuantity}
 								/>
 							</FormItem>
-							<FormItem label={m.catalog_maximum_per_customer()}>
+							<FormItem
+								label={m.catalog_maximum_per_customer()}
+								tooltip={m.catalog_maximum_per_customer_tooltip()}
+							>
 								<Input
 									min={1}
 									onChange={(event) =>
@@ -1056,7 +1078,10 @@ function SellableItemsEditor({
 								/>
 							</FormItem>
 							{component ? (
-								<FormItem label={m.catalog_duration_ms()}>
+								<FormItem
+									label={m.catalog_duration_ms()}
+									tooltip={m.catalog_duration_ms_tooltip()}
+								>
 									<DurationField
 										onChange={(durationMs) =>
 											updateComponent(
@@ -1072,7 +1097,10 @@ function SellableItemsEditor({
 							) : null}
 							{component?.type === "stock" &&
 							sellableItem.fulfillmentSource === "local" ? (
-								<FormItem label={m.catalog_low_stock_threshold()}>
+								<FormItem
+									label={m.catalog_low_stock_threshold()}
+									tooltip={m.catalog_low_stock_threshold_tooltip()}
+								>
 									<Input
 										min={0}
 										onChange={(event) =>
@@ -1089,7 +1117,10 @@ function SellableItemsEditor({
 								</FormItem>
 							) : null}
 							{component?.type === "download" ? (
-								<FormItem label={accessLimitLabel(component.type)}>
+								<FormItem
+									label={accessLimitLabel(component.type)}
+									tooltip={m.catalog_access_limit_tooltip()}
+								>
 									<Input
 										min={1}
 										onChange={(event) =>
@@ -1106,7 +1137,10 @@ function SellableItemsEditor({
 								</FormItem>
 							) : null}
 							{component?.type === "automation" ? (
-								<FormItem label={usageLimitLabel(component.type)}>
+								<FormItem
+									label={usageLimitLabel(component.type)}
+									tooltip={m.catalog_usage_limit_tooltip()}
+								>
 									<Input
 										min={1}
 										onChange={(event) =>

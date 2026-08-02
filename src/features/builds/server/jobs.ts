@@ -68,7 +68,8 @@ export async function createBuildJob(
 	);
 	const context = await db
 		.prepare(
-			`SELECT ce.id AS entitlement_id, ce.order_item_id, ce.definition_version_id,
+			`SELECT ce.id AS entitlement_id, ce.order_item_id,
+			 item.active_definition_version_id AS definition_version_id,
 			 ce.usage_limit, ce.usage_count, item.id AS automation_config_id,
 			 item.automation_provider AS provider,
 			 item.automation_base_url AS provider_base_url,
@@ -87,7 +88,8 @@ export async function createBuildJob(
 			  AND bm.sellable_item_id = item.id
 			  AND bm.config_version = item.version AND bm.enabled = 1
 			 WHERE ce.id = ? AND oi.order_id = ? AND ce.entitlement_type = 'automation'
-			 AND ce.status IN ('active', 'exhausted') AND ce.definition_version_id IS NOT NULL
+			 AND ce.status IN ('active', 'exhausted')
+			 AND item.active_definition_version_id IS NOT NULL
 			 AND (ce.expires_at IS NULL OR ce.expires_at > ?)
 			 AND item.enabled = 1 AND item.automation_provider IS NOT NULL LIMIT 1`,
 		)
@@ -271,7 +273,7 @@ export async function createBuildJob(
 				  callback_secret_encrypted, callback_secret_key_version, idempotency_key,
 				  notification_channel, inputs_json, sensitive_inputs_json,
 				  status, attempt_count, next_attempt_at, timeout_at, created_at, updated_at)
-				 SELECT ?, ce.id, ce.order_item_id, ?, ?, ce.definition_version_id, ?, ?, ?, ?,
+				 SELECT ?, ce.id, ce.order_item_id, ?, ?, ?, ?, ?, ?, ?,
 				  ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 'queued', 0, ?, ?, ?, ?
 				 FROM customer_entitlements ce
 				 WHERE ce.id = ? AND ce.status IN ('active', 'exhausted')
@@ -282,6 +284,7 @@ export async function createBuildJob(
 				jobId,
 				context.automation_config_id,
 				context.method_id,
+				context.definition_version_id,
 				context.provider,
 				context.provider_base_url,
 				context.repository_owner,
