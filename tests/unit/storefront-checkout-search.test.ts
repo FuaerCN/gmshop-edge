@@ -59,12 +59,24 @@ describe("checkout presentation", () => {
 
 	it("presents payment methods like selectable plans without a visible radio", () => {
 		expect(checkoutPageSource).toContain(
-			"grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-3",
+			"grid grid-cols-[repeat(auto-fill,minmax(7.5rem,10rem))] gap-3",
 		);
 		expect(checkoutPageSource).toContain('className="sr-only"');
 		expect(checkoutPageSource).toContain("has-checked:bg-primary/10");
+		expect(checkoutPageSource).toContain(
+			"grid min-h-16 cursor-pointer place-items-center content-center gap-1.5 rounded-lg",
+		);
 		expect(checkoutPageSource).not.toContain(
 			'name="payment-channel"\n\t\t\t\t\t\t\t\t\t\tclassName="size-4',
+		);
+	});
+
+	it("keeps order-item thumbnails compact", () => {
+		expect(checkoutPageSource).toContain(
+			"aspect-video w-18 shrink-0 rounded-md object-cover",
+		);
+		expect(checkoutPageSource).not.toContain(
+			"aspect-video w-18 shrink-0 rounded-2xl",
 		);
 	});
 });

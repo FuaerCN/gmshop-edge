@@ -355,11 +355,11 @@ export function StorefrontCheckoutPage() {
 											{"coverUrl" in item && item.coverUrl ? (
 												<img
 													alt={item.productName}
-													className="aspect-video w-18 shrink-0 rounded-2xl object-cover"
+													className="aspect-video w-18 shrink-0 rounded-md object-cover"
 													src={item.coverUrl}
 												/>
 											) : (
-												<div className="grid aspect-video w-18 shrink-0 place-items-center rounded-2xl bg-muted">
+												<div className="grid aspect-video w-18 shrink-0 place-items-center rounded-md bg-muted">
 													<Boxes className="size-6 text-muted-foreground" />
 												</div>
 											)}
@@ -489,16 +489,16 @@ export function StorefrontCheckoutPage() {
 									<section
 										aria-busy="true"
 										aria-label={m.common_loading()}
-										className="grid grid-cols-2 gap-2"
+										className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,10rem))] gap-3"
 									>
-										<Skeleton className="h-20 w-full rounded-xl" />
-										<Skeleton className="h-20 w-full rounded-xl" />
+										<Skeleton className="h-16 w-full rounded-lg" />
+										<Skeleton className="h-16 w-full rounded-lg" />
 									</section>
 								) : null}
-								<div className="grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-3">
+								<div className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,10rem))] gap-3">
 									{channels.data?.map((channel) => (
 										<label
-											className="grid min-h-20 cursor-pointer place-items-center content-center gap-2 rounded-xl bg-background/70 p-4 text-center text-sm ring-offset-background transition hover:bg-background has-checked:bg-primary/10 has-checked:ring-2 has-checked:ring-primary has-checked:ring-offset-2 has-focus-visible:ring-2 has-focus-visible:ring-ring"
+											className="grid min-h-16 cursor-pointer place-items-center content-center gap-1.5 rounded-lg bg-background/70 px-3 py-2.5 text-center text-sm ring-offset-background transition hover:bg-background has-checked:bg-primary/10 has-checked:ring-2 has-checked:ring-primary has-checked:ring-offset-2 has-focus-visible:ring-2 has-focus-visible:ring-ring"
 											key={channel.id}
 										>
 											<input
@@ -511,7 +511,7 @@ export function StorefrontCheckoutPage() {
 												value={channel.id}
 											/>
 											<PaymentProviderLogo
-												className="size-8 rounded-lg"
+												className="size-6 rounded-md"
 												logoUrl={channel.logoUrl}
 												providerId={channel.provider}
 											/>
@@ -650,7 +650,7 @@ export function CheckoutLoadingSkeleton({
 									key={key}
 								>
 									<div className="flex items-center gap-4">
-										<Skeleton className="aspect-video w-18 shrink-0 rounded-2xl" />
+										<Skeleton className="aspect-video w-18 shrink-0 rounded-md" />
 										<div className="grid min-w-0 flex-1 gap-2">
 											<Skeleton className="h-5 w-3/4" />
 											<Skeleton className="h-5 w-1/2" />
@@ -689,9 +689,9 @@ export function CheckoutLoadingSkeleton({
 						</div>
 						<div>
 							<Skeleton className="mb-4 h-5 w-28" />
-							<div className="grid grid-cols-2 gap-3">
-								<Skeleton className="h-20 rounded-xl" />
-								<Skeleton className="h-20 rounded-xl" />
+							<div className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,10rem))] gap-3">
+								<Skeleton className="h-16 rounded-lg" />
+								<Skeleton className="h-16 rounded-lg" />
 							</div>
 						</div>
 						<div className="mt-auto grid gap-4">
