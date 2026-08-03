@@ -39,7 +39,7 @@ type SupplierOrderContext = {
 };
 
 type BindingSnapshot = {
-	provider: "acg" | "dujiao_next";
+	provider: "acg" | "dujiao_next" | "gmshop_edge";
 	normalizedApiOrigin: string;
 	protocolVersion: string;
 	upstreamProductId: string;
@@ -570,7 +570,9 @@ function loadSelectedAccount(db: D1Database, id: string) {
 function parseBindingSnapshot(value: string): BindingSnapshot {
 	const parsed = JSON.parse(value) as Partial<BindingSnapshot>;
 	if (
-		(parsed.provider !== "acg" && parsed.provider !== "dujiao_next") ||
+		!(["acg", "dujiao_next", "gmshop_edge"] as const).includes(
+			parsed.provider as "acg" | "dujiao_next" | "gmshop_edge",
+		) ||
 		!parsed.normalizedApiOrigin ||
 		!parsed.protocolVersion ||
 		!parsed.upstreamProductId ||

@@ -28,6 +28,8 @@ export const users = sqliteTable(
 		telegramUsername: text("telegram_username"),
 		telegramPhoneNumber: text("telegram_phone_number"),
 		enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+		balanceMinor: text("balance_minor").notNull().default("0"),
+		balanceVersion: integer("balance_version").notNull().default(1),
 		customerNote: text("customer_note"),
 		lastOrderedAt: integer("last_ordered_at", { mode: "timestamp_ms" }),
 		roleIds: text("role_ids", { mode: "json" })
@@ -43,6 +45,11 @@ export const users = sqliteTable(
 			"users_role_ids_json_check",
 			sql`json_valid(${table.roleIds}) AND json_type(${table.roleIds}) = 'array' AND json_array_length(${table.roleIds}) <= 32`,
 		),
+		check(
+			"users_balance_check",
+			sql`${table.balanceMinor} <> '' AND ${table.balanceMinor} NOT GLOB '*[^0-9]*'`,
+		),
+		check("users_balance_version_check", sql`${table.balanceVersion} > 0`),
 	],
 );
 

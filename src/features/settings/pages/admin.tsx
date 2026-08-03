@@ -210,24 +210,26 @@ export function SystemSettingsSection({ group }: { group: SettingsGroup }) {
 					/>
 				) : null}
 				{group === "commerce" ? (
-					<ExchangeRatesTable
-						baseCurrency={String(
-							values.get("commerce.default_currency") ?? "USD",
-						)}
-						settingsAction={
-							<DefaultCurrencySettingsModal
-								configuredSecrets={configuredSecrets}
-								fields={selected}
-								values={values}
-								onSaved={async () => {
-									await client.invalidateQueries({
-										queryKey: systemSettingsQueryKey,
-									});
-									toast.success(m.settings_saved());
-								}}
-							/>
-						}
-					/>
+					<div className="flex min-h-0 flex-1 flex-col gap-4">
+						<ExchangeRatesTable
+							baseCurrency={String(
+								values.get("commerce.default_currency") ?? "USD",
+							)}
+							settingsAction={
+								<DefaultCurrencySettingsModal
+									configuredSecrets={configuredSecrets}
+									fields={selected}
+									values={values}
+									onSaved={async () => {
+										await client.invalidateQueries({
+											queryKey: systemSettingsQueryKey,
+										});
+										toast.success(m.settings_saved());
+									}}
+								/>
+							}
+						/>
+					</div>
 				) : null}
 			</div>
 		</div>

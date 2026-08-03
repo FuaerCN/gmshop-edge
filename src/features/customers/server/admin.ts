@@ -11,6 +11,7 @@ import {
 	customerListSchema,
 	customerSensitiveActionSchema,
 	customerUpdateSchema,
+	customerWalletAdjustmentSchema,
 } from "#/features/customers/schema";
 import {
 	type ListedUserRow,
@@ -19,6 +20,7 @@ import {
 	listUsersWithCommerce,
 	presentListedUser,
 } from "#/features/users/server/list";
+import { mutateWallet } from "#/features/wallet/server/ledger";
 import { DomainError } from "#/lib/domain-error";
 import { createAuditStatement } from "#/server/audit";
 import {
@@ -60,7 +62,7 @@ export const getCustomerFn = createServerFn({ method: "GET" })
 		if (!customer)
 			throw new DomainError("customer_not_found", 404, "Customer not found");
 		const scope = customerScope(customer);
-		const [orders, entitlements] = await Promise.all([
+		const [orders, entitlements, settings] = await Promise.all([
 			db.$client
 				.prepare(
 					`SELECT id, order_number, status, currency, currency_decimals,
@@ -84,9 +86,26 @@ export const getCustomerFn = createServerFn({ method: "GET" })
 				)
 				.bind(...scope.bindings)
 				.all(),
+			db.$client
+				.prepare(
+					"SELECT key, value FROM system_settings WHERE key IN ('commerce.default_currency', 'commerce.currency_decimals')",
+				)
+				.all<{ key: string; value: string }>(),
 		]);
+		const moneySettings = new Map(
+			settings.results.map((row) => [row.key, JSON.parse(row.value)]),
+		);
 		return {
 			...presentListedUser(customer),
+			wallet: {
+				balanceMinor: customer.balance_minor,
+				currency: String(
+					moneySettings.get("commerce.default_currency") ?? "USD",
+				),
+				currencyDecimals: Number(
+					moneySettings.get("commerce.currency_decimals") ?? 2,
+				),
+			},
 			orders: orders.results.map((row) => ({
 				id: String(row.id),
 				orderNumber: String(row.order_number),
@@ -154,6 +173,43 @@ export const updateCustomerFn = createServerFn({ method: "POST" })
 			}),
 		]);
 		return { id: data.id };
+	});
+
+export const adjustCustomerWalletFn = createServerFn({ method: "POST" })
+	.validator((input: z.input<typeof customerWalletAdjustmentSchema>) =>
+		customerWalletAdjustmentSchema.parse(input),
+	)
+	.handler(async ({ data }) => {
+		const { currentUser, db, request } = await getAdminServerContext(
+			systemPermission("customers", "update"),
+		);
+		const setting = await db.$client
+			.prepare(
+				"SELECT value FROM system_settings WHERE key = 'commerce.default_currency'",
+			)
+			.first<{ value: string }>();
+		const result = await mutateWallet(db.$client, {
+			userId: data.id,
+			direction: data.direction,
+			amountMinor: data.amountMinor,
+			currency: setting ? String(JSON.parse(setting.value)) : "USD",
+			sourceType: "adjustment",
+			sourceId: data.id,
+			idempotencyKey: data.idempotencyKey,
+			reason: data.reason,
+			actorUserId: currentUser.id,
+		});
+		await createAuditStatement(db.$client, request, currentUser.id, {
+			action: "customer.wallet_adjusted",
+			targetType: "user",
+			targetId: data.id,
+			after: {
+				direction: data.direction,
+				amountMinor: data.amountMinor,
+				reason: data.reason,
+			},
+		}).run();
+		return result;
 	});
 
 export const exportCustomerDataFn = createServerFn({ method: "POST" })

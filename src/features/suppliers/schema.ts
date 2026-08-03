@@ -1,11 +1,16 @@
 import { z } from "zod";
 
-export const supplierProviderSchema = z.enum(["acg", "dujiao_next"]);
+export const supplierProviderSchema = z.enum([
+	"acg",
+	"dujiao_next",
+	"gmshop_edge",
+]);
 export type SupplierProvider = z.infer<typeof supplierProviderSchema>;
 
 export const supplierProtocolVersions = {
 	acg: "3.5.5-v4",
 	dujiao_next: "1.3.1-upstream-v1",
+	gmshop_edge: "gmshop-edge-upstream-v1",
 } as const satisfies Record<SupplierProvider, string>;
 
 const minorAmountSchema = z
@@ -108,11 +113,20 @@ export const dujiaoNextCredentialsSchema = z.object({
 	apiSecret: z.string().min(1).max(1024),
 });
 
+export const gmshopEdgeCredentialsSchema = z.object({
+	apiKey: z.string().trim().min(1).max(512),
+	apiSecret: z.string().min(32).max(1024),
+});
+
 export const supplierCredentialsSchema = z.discriminatedUnion("provider", [
 	z.object({ provider: z.literal("acg"), credentials: acgCredentialsSchema }),
 	z.object({
 		provider: z.literal("dujiao_next"),
 		credentials: dujiaoNextCredentialsSchema,
+	}),
+	z.object({
+		provider: z.literal("gmshop_edge"),
+		credentials: gmshopEdgeCredentialsSchema,
 	}),
 ]);
 

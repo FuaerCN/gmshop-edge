@@ -60,6 +60,7 @@ const definitions = {
 		.regex(/^[A-Z]{3}$/),
 	"commerce.currency_decimals": z.number().int().min(0).max(8),
 	"commerce.currency_symbol": z.string().trim().min(1).max(12),
+	"commerce.supplier_api_enabled": z.boolean(),
 } as const;
 
 export type SettingKey = keyof typeof definitions;
@@ -90,6 +91,7 @@ const defaults: Record<SettingKey, SettingValue> = {
 	"commerce.default_currency": "USD",
 	"commerce.currency_decimals": 2,
 	"commerce.currency_symbol": "$",
+	"commerce.supplier_api_enabled": false,
 };
 
 export async function listSystemSettings(db: D1Database) {
@@ -128,6 +130,7 @@ export async function saveSystemSettings(
 		if (shouldPreserveRuntimeSecret(key, item.value)) return [];
 		return [{ key, value: definitions[key].parse(item.value) as SettingValue }];
 	});
+	await assertCommerceMoneySettingsMutable(parsed, dependencies.db);
 	const now = Date.now();
 	await dependencies.db.batch([
 		...parsed.map((item) =>
@@ -168,6 +171,44 @@ export async function saveSystemSettings(
 	if (parsed.some(({ key }) => key.startsWith("site.")))
 		await invalidateSiteBrandCache(dependencies.cache);
 	return { updated: parsed.map((item) => item.key) };
+}
+
+async function assertCommerceMoneySettingsMutable(
+	parsed: Array<{ key: SettingKey; value: SettingValue }>,
+	db: D1Database,
+) {
+	const moneySettings = parsed.filter(
+		(item) =>
+			item.key === "commerce.default_currency" ||
+			item.key === "commerce.currency_decimals",
+	);
+	if (!moneySettings.length) return;
+	const stored = await db
+		.prepare(
+			"SELECT key, value FROM system_settings WHERE key IN ('commerce.default_currency', 'commerce.currency_decimals')",
+		)
+		.all<{ key: string; value: string }>();
+	const current = new Map(stored.results.map((row) => [row.key, row.value]));
+	const changed = moneySettings.some(
+		(item) =>
+			JSON.stringify(item.value) !==
+			(current.get(item.key) ?? JSON.stringify(defaults[item.key])),
+	);
+	if (!changed) return;
+	const locked = await db
+		.prepare(
+			`SELECT
+			 EXISTS(SELECT 1 FROM users WHERE balance_minor <> '0') OR
+			 EXISTS(SELECT 1 FROM wallet_topups WHERE status = 'pending') OR
+			 EXISTS(SELECT 1 FROM supplier_export_listings WHERE enabled = 1) AS locked`,
+		)
+		.first<{ locked: number }>();
+	if (locked?.locked)
+		throw new DomainError(
+			"commerce_currency_locked",
+			409,
+			"Currency settings cannot change while balances, pending top-ups, or exported listings exist",
+		);
 }
 
 function parseStored(value: string, fallback: SettingValue): SettingValue {

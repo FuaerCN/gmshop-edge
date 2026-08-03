@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
 	},
 }));
 
+vi.mock("@tanstack/react-query", () => ({
+	useQuery: () => ({ data: { root: false } }),
+}));
+
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
 		children,
@@ -30,6 +34,18 @@ vi.mock("#/features/auth/auth-client", () => ({
 	authClient: {
 		useSession: () => mocks.session,
 	},
+}));
+
+vi.mock("#/features/auth/server/session", () => ({
+	getStorefrontAdminEntryFn: vi.fn(),
+}));
+
+vi.mock("#/features/exchange-rates/currency-context", () => ({
+	useCurrency: () => ({
+		currency: "USD",
+		currencies: ["USD", "EUR"],
+		setCurrency: vi.fn(),
+	}),
 }));
 
 vi.mock("#/features/exchange-rates/currency-switch", () => ({
@@ -63,6 +79,10 @@ vi.mock("#/layouts/components/theme-switch", () => ({
 	ThemeSwitch: () => <button type="button">Theme control</button>,
 }));
 
+vi.mock("#/layouts/public/account-settings-panel", () => ({
+	AccountSettingsPanel: () => <div>App settings</div>,
+}));
+
 vi.mock("#/paraglide/messages", () => ({
 	m: new Proxy(
 		{
@@ -76,6 +96,8 @@ vi.mock("#/paraglide/messages", () => ({
 			store_my_guest_description: () => "Guest description",
 			store_my_guest_orders_description: () => "Guest orders description",
 			store_my_guest_title: () => "Guest title",
+			store_not_signed_in: () => "Not signed in",
+			store_lookup_title: () => "Guest order lookup",
 			store_my_language_description: () => "Language description",
 			store_my_preferences_description: () => "Preferences description",
 			store_my_preferences_title: () => "Display preferences",
@@ -122,6 +144,8 @@ describe("storefront me page", () => {
 		act(() => root.render(<StorefrontMePage />));
 
 		expect(container.textContent).toContain("Guest title");
+		expect(container.textContent).toContain("Not signed in");
+		expect(container.textContent).toContain("Guest order lookup");
 		expect(container.querySelector('a[href="/sign-in"]')).not.toBeNull();
 		expect(container.querySelector('a[href="/orders"]')).not.toBeNull();
 		expect(container.textContent).toContain("Currency control");
@@ -148,6 +172,7 @@ describe("storefront me page", () => {
 		).not.toBeNull();
 		expect(container.textContent).toContain("Sign out");
 		expect(container.textContent).not.toContain("Guest title");
+		expect(container.querySelector("nav.grid-cols-4")).not.toBeNull();
 	});
 
 	it("shows an account loading state without hiding preferences", () => {

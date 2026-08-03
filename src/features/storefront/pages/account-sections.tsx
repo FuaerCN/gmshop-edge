@@ -15,12 +15,14 @@ import {
 	ReceiptText,
 	RefreshCw,
 	ShoppingBag,
+	WalletCards,
 	WandSparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ComponentProps, forwardRef, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CopyButton, ProButton } from "#/components/pro/base/button";
-import { ProSchemaForm } from "#/components/pro/form";
+import { ModalForm, ProSchemaForm } from "#/components/pro/form";
+import { ProModal } from "#/components/pro/overlay";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import {
@@ -31,6 +33,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "#/components/ui/dialog";
+import { Input } from "#/components/ui/input";
 import { Skeleton } from "#/components/ui/skeleton";
 import { authClient } from "#/features/auth/auth-client";
 import { listPublicAuthProvidersFn } from "#/features/auth/server/provider-admin";
@@ -49,6 +52,16 @@ import {
 	setAccountPasswordFn,
 	updateStoreProfileFn,
 } from "#/features/storefront/server/account-functions";
+import { listCheckoutPaymentChannelsFn } from "#/features/storefront/server/functions";
+import {
+	createSupplierApiKeyFn,
+	listSupplierApiKeysFn,
+	revokeSupplierApiKeyFn,
+} from "#/features/supplier-api/server/keys";
+import {
+	createWalletTopupFn,
+	getWalletFn,
+} from "#/features/wallet/server/functions";
 import { ChangePasswordForm } from "#/layouts/components/change-password-dialog";
 import {
 	formatBytes,
@@ -57,6 +70,7 @@ import {
 	formatMinorAmountWithSymbol,
 } from "#/lib/format";
 import { localeLabels, supportedLocales } from "#/lib/locales";
+import { parseMajorInput } from "#/lib/money-input";
 import { m } from "#/paraglide/messages";
 
 type Account = Awaited<ReturnType<typeof getStoreAccountFn>>;
@@ -74,7 +88,7 @@ export function AccountOverviewPage({ account }: { account: Account }) {
 				title={m.store_account_title()}
 				description={m.store_account_overview_description()}
 			/>
-			<div className="grid gap-3 sm:grid-cols-3">
+			<div className="grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]">
 				<Summary
 					icon={<ReceiptText />}
 					label={m.store_account_orders()}
@@ -90,6 +104,8 @@ export function AccountOverviewPage({ account }: { account: Account }) {
 					label={m.store_account_active_entitlements()}
 					value={activeEntitlements}
 				/>
+				<WalletSummaryCard />
+				<ApiKeysDialog />
 			</div>
 			<section>
 				<div className="flex items-center justify-between gap-4">
@@ -126,6 +142,285 @@ export function AccountOverviewPage({ account }: { account: Account }) {
 				</div>
 			</section>
 		</>
+	);
+}
+
+function WalletSummaryCard() {
+	const wallet = useQuery({
+		queryKey: ["wallet"],
+		queryFn: () => getWalletFn(),
+	});
+	const channels = useQuery({
+		queryKey: ["storefront", "payment-channels"],
+		queryFn: () => listCheckoutPaymentChannelsFn(),
+	});
+	const topup = useMutation({
+		mutationFn: createWalletTopupFn,
+		onSuccess: (payment) => {
+			if (payment.checkoutUrl) window.location.assign(payment.checkoutUrl);
+		},
+		onError: () => toast.error(m.web_support_failed()),
+	});
+	return (
+		<ModalForm
+			description={m.wallet_top_up_description()}
+			initialValues={{ channelId: channels.data?.[0]?.id }}
+			key={channels.data?.[0]?.id ?? "topup-payment-loading"}
+			trigger={
+				<DashboardAction
+					icon={<WalletCards />}
+					label={m.wallet_balance()}
+					value={
+						wallet.data
+							? formatMinorAmountWithSymbol(
+									wallet.data.balanceMinor,
+									wallet.data.currency,
+									wallet.data.currencyDecimals,
+								)
+							: "…"
+					}
+				/>
+			}
+			title={m.wallet_top_up()}
+			schema={[
+				{
+					name: "amountMinor",
+					label: m.wallet_top_up_amount(),
+					required: true,
+					render: (field) => (
+						<TopupAmountField
+							currency={wallet.data?.currency ?? "USD"}
+							decimals={wallet.data?.currencyDecimals ?? 2}
+							onChange={field.onChange}
+							value={typeof field.value === "string" ? field.value : ""}
+						/>
+					),
+				},
+				{
+					name: "channelId",
+					label: m.store_payment_method(),
+					valueType: "select",
+					required: true,
+					fieldProps: {
+						options:
+							channels.data?.map((channel) => ({
+								label: channel.name,
+								value: channel.id,
+							})) ?? [],
+					},
+				},
+			]}
+			validate={(values) => {
+				const errors: Record<string, string[]> = {};
+				if (!isPositiveMinor(values.amountMinor))
+					errors.amountMinor = [m.store_input_required()];
+				return errors;
+			}}
+			onFinish={async (values) => {
+				await topup.mutateAsync({
+					data: {
+						amountMinor: String(values.amountMinor ?? ""),
+						channelId: String(values.channelId ?? ""),
+						idempotencyKey: crypto.randomUUID(),
+					},
+				});
+			}}
+			onFinishFailed={() => toast.error(m.web_support_failed())}
+		/>
+	);
+}
+
+const topupPresetAmounts = [10, 20, 50, 100] as const;
+
+function isPositiveMinor(value: unknown) {
+	return typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
+}
+
+function TopupAmountField({
+	value,
+	onChange,
+	currency,
+	decimals,
+}: {
+	value: string;
+	onChange: (value: string) => void;
+	currency: string;
+	decimals: number;
+}) {
+	const [display, setDisplay] = useState("");
+	const presets = topupPresetAmounts.map((major) => ({
+		major,
+		minor: parseMajorInput(String(major), decimals) ?? "",
+	}));
+	return (
+		<div className="grid gap-3">
+			<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+				{presets.map((preset) => (
+					<Button
+						key={preset.major}
+						onClick={() => {
+							setDisplay(String(preset.major));
+							onChange(preset.minor);
+						}}
+						type="button"
+						variant={value === preset.minor ? "default" : "outline"}
+					>
+						{formatMinorAmountWithSymbol(preset.minor, currency, decimals)}
+					</Button>
+				))}
+			</div>
+			<div className="relative">
+				<Input
+					aria-label={m.wallet_custom_amount()}
+					className="pr-16"
+					inputMode="decimal"
+					onChange={(event) => {
+						const nextDisplay = event.target.value;
+						setDisplay(nextDisplay);
+						const parsed = parseMajorInput(nextDisplay, decimals);
+						onChange(parsed === undefined ? "" : (parsed ?? ""));
+					}}
+					placeholder={m.wallet_custom_amount()}
+					value={display}
+				/>
+				<span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground text-sm">
+					{currency}
+				</span>
+			</div>
+		</div>
+	);
+}
+
+function ApiKeysDialog() {
+	const api = useQuery({
+		queryKey: ["supplier-api-keys"],
+		queryFn: () => listSupplierApiKeysFn(),
+	});
+	const [createdKey, setCreatedKey] = useState<{
+		apiKey: string;
+		apiSecret: string;
+	} | null>(null);
+	const createKey = useMutation({
+		mutationFn: createSupplierApiKeyFn,
+		onSuccess: (key) => {
+			setCreatedKey(key);
+			void api.refetch();
+		},
+		onError: () => toast.error(m.web_support_failed()),
+	});
+	const revokeKey = useMutation({
+		mutationFn: revokeSupplierApiKeyFn,
+		onSuccess: () => api.refetch(),
+		onError: () => toast.error(m.web_support_failed()),
+	});
+	if (!api.data?.enabled) return null;
+	const activeKeys = api.data.keys.filter((key) => !key.revoked_at);
+	return (
+		<ProModal
+			description={m.supplier_api_purchase_description()}
+			trigger={
+				<DashboardAction
+					icon={<KeyRound />}
+					label={m.supplier_api_purchase()}
+					value={m.supplier_api_key_count({ count: activeKeys.length })}
+				/>
+			}
+			title={m.supplier_api_purchase()}
+		>
+			<div className="flex min-h-0 flex-col gap-4">
+				<div className="grid gap-5 overflow-y-auto px-1">
+					{createdKey ? (
+						<section className="rounded-xl bg-primary/8 p-4 ring-1 ring-primary/20">
+							<div className="flex items-start gap-3">
+								<span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+									<KeyRound className="size-4" />
+								</span>
+								<div>
+									<p className="font-medium">{m.supplier_api_key_created()}</p>
+									<p className="mt-1 text-muted-foreground text-sm">
+										{m.supplier_api_key_created_notice()}
+									</p>
+								</div>
+							</div>
+							<div className="mt-4 grid gap-2">
+								<ApiCredential label="API Key" value={createdKey.apiKey} />
+								<ApiCredential
+									label={m.supplier_api_secret()}
+									value={createdKey.apiSecret}
+								/>
+							</div>
+						</section>
+					) : null}
+					<section>
+						<h3 className="mb-2 font-medium text-sm">
+							{m.supplier_api_existing_keys()}
+						</h3>
+						<div className="grid gap-2">
+							{api.data.keys.length ? (
+								api.data.keys.map((key) => (
+									<div
+										className="flex min-w-0 items-center gap-3 rounded-xl bg-muted/35 p-3"
+										key={key.id}
+									>
+										<span className="grid size-9 shrink-0 place-items-center rounded-full bg-background text-primary">
+											<KeyRound className="size-4" />
+										</span>
+										<div className="min-w-0 flex-1">
+											<p className="text-muted-foreground text-xs">API Key</p>
+											<code className="block truncate text-xs">
+												{key.key_id}
+											</code>
+										</div>
+										<Badge variant={key.revoked_at ? "outline" : "secondary"}>
+											{key.revoked_at
+												? m.supplier_api_revoked()
+												: m.common_enabled()}
+										</Badge>
+										<Button
+											disabled={Boolean(key.revoked_at) || revokeKey.isPending}
+											onClick={() => revokeKey.mutate({ data: { id: key.id } })}
+											size="sm"
+											variant="ghost"
+										>
+											{m.supplier_api_revoke()}
+										</Button>
+									</div>
+								))
+							) : (
+								<p className="rounded-xl bg-muted/35 p-4 text-center text-muted-foreground text-sm">
+									{m.supplier_api_no_keys()}
+								</p>
+							)}
+						</div>
+					</section>
+				</div>
+				<div className="flex shrink-0 justify-end">
+					<Button
+						disabled={createKey.isPending}
+						onClick={() => createKey.mutate({ data: {} })}
+					>
+						<KeyRound />
+						{m.supplier_create_new_api_key()}
+					</Button>
+				</div>
+			</div>
+		</ProModal>
+	);
+}
+
+function ApiCredential({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="grid min-w-0 gap-1 rounded-lg bg-background/75 p-3">
+			<span className="text-muted-foreground text-xs">{label}</span>
+			<div className="flex min-w-0 items-center gap-2">
+				<code className="min-w-0 flex-1 truncate text-xs">{value}</code>
+				<CopyButton
+					aria-label={`${m.common_copy()} ${label}`}
+					copy={value}
+					size="icon-sm"
+				/>
+			</div>
+		</div>
 	);
 }
 
@@ -927,6 +1222,34 @@ function Summary({
 		</div>
 	);
 }
+
+const DashboardAction = forwardRef<
+	HTMLButtonElement,
+	Omit<ComponentProps<"button">, "children"> & {
+		icon: React.ReactNode;
+		label: string;
+		value: React.ReactNode;
+	}
+>(function DashboardAction({ icon, label, value, className, ...props }, ref) {
+	return (
+		<button
+			className={`flex items-center gap-4 rounded-2xl bg-muted/30 p-4 text-start transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5 ${className ?? ""}`}
+			ref={ref}
+			type="button"
+			{...props}
+		>
+			<span className="grid size-10 shrink-0 place-items-center rounded-full bg-background text-primary">
+				{icon}
+			</span>
+			<span className="min-w-0">
+				<span className="block truncate text-muted-foreground text-sm">
+					{label}
+				</span>
+				<strong className="block truncate text-2xl">{value}</strong>
+			</span>
+		</button>
+	);
+});
 function Empty({
 	title,
 	description,

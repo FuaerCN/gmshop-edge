@@ -102,6 +102,7 @@ export const multiStoreOrderSchema = z.object({
 export const createStoreOrderSchema = multiStoreOrderSchema;
 
 const checkoutFields = {
+	walletPayment: z.boolean().default(false),
 	paymentChannelId: z.uuid().nullable().default(null),
 	paymentCurrency: z
 		.string()

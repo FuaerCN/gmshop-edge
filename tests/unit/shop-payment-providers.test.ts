@@ -33,7 +33,8 @@ describe("shop payment providers", () => {
 		const fetcher = vi.fn(
 			async (_input: RequestInfo | URL, init?: RequestInit) => {
 				const body = new URLSearchParams(String(init?.body));
-				expect(body.get("type")).toBe("alipay");
+				expect(body.has("type")).toBe(false);
+				expect(body.has("payment_type")).toBe(false);
 				expect(body.get("amount")).toBe("12.345");
 				expect(body.get("currency")).toBe("KWD");
 				expect(body.get("token")).toBe("usdt");

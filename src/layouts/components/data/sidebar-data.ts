@@ -395,6 +395,13 @@ export const navigationGroups: readonly NavigationGroup[] = [
 						systemPermission("settings", "read"),
 					),
 					entry(
+						"settings-supplier-api",
+						() => m.settings_supplier_api_enabled(),
+						"/admin/settings/supplier-api",
+						KeyRound,
+						systemPermission("suppliers", "read"),
+					),
+					entry(
 						"settings-fulfillment",
 						() => m.settings_group_fulfillment(),
 						"/admin/settings/fulfillment",

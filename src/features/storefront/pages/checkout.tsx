@@ -49,6 +49,7 @@ import {
 	checkoutStoreOrderFn,
 	listCheckoutPaymentChannelsFn,
 } from "#/features/storefront/server/functions";
+import { getWalletFn } from "#/features/wallet/server/functions";
 import { m } from "#/paraglide/messages";
 import { getLocale } from "#/paraglide/runtime";
 
@@ -180,6 +181,17 @@ export function StorefrontCheckoutPage() {
 		queryFn: () => listCheckoutPaymentChannelsFn(),
 		enabled: Boolean(currencyItem && total > 0n && !signInRequired),
 	});
+	const wallet = useQuery({
+		queryKey: ["wallet"],
+		queryFn: () => getWalletFn(),
+		enabled: Boolean(session.data?.user && currencyItem && total > 0n),
+	});
+	const walletAvailable = Boolean(
+		wallet.data &&
+			currencyItem &&
+			wallet.data.currency === currencyItem.currency &&
+			BigInt(wallet.data.balanceMinor) >= total,
+	);
 	const cartPending =
 		session.isPending ||
 		(!buyNow && Boolean(session.data?.user) && cloud.isPending) ||
@@ -195,7 +207,7 @@ export function StorefrontCheckoutPage() {
 		!signInRequired &&
 		total > 0n &&
 		!channels.isPending &&
-		(channels.isError || !channels.data?.length);
+		(channels.isError || (!channels.data?.length && !walletAvailable));
 	useEffect(() => {
 		if (items.length) trackCommerceEvent({ eventType: "checkout_started" });
 	}, [items.length]);
@@ -208,6 +220,7 @@ export function StorefrontCheckoutPage() {
 		const first = channels.data?.[0];
 		if (
 			first &&
+			paymentChannelId !== "wallet" &&
 			!channels.data?.some((channel) => channel.id === paymentChannelId)
 		)
 			setPaymentChannelId(first.id);
@@ -253,7 +266,11 @@ export function StorefrontCheckoutPage() {
 				customerNote: "",
 				commerceSessionId: commerceSessionId(),
 				locale: getLocale(),
-				paymentChannelId: paymentChannelId || null,
+				walletPayment: paymentChannelId === "wallet",
+				paymentChannelId:
+					paymentChannelId && paymentChannelId !== "wallet"
+						? paymentChannelId
+						: null,
 				paymentCurrency,
 				termsAccepted: true,
 				items: items.map((item) => ({
@@ -496,6 +513,23 @@ export function StorefrontCheckoutPage() {
 									</section>
 								) : null}
 								<div className="grid grid-cols-[repeat(auto-fill,minmax(7.5rem,10rem))] gap-3">
+									{wallet.data ? (
+										<label className="grid min-h-16 cursor-pointer place-items-center content-center gap-1.5 rounded-lg bg-background/70 px-3 py-2.5 text-center text-sm ring-offset-background transition hover:bg-background has-checked:bg-primary/10 has-checked:ring-2 has-checked:ring-primary has-checked:ring-offset-2 has-focus-visible:ring-2 has-focus-visible:ring-ring">
+											<input
+												checked={paymentChannelId === "wallet"}
+												className="sr-only"
+												disabled={!walletAvailable}
+												name="payment-channel"
+												onChange={() => setPaymentChannelId("wallet")}
+												type="radio"
+												value="wallet"
+											/>
+											<span className="font-medium">{m.wallet_payment()}</span>
+											<span className="text-muted-foreground text-xs">
+												{m.wallet_balance()}: {wallet.data.balanceMinor}
+											</span>
+										</label>
+									) : null}
 									{channels.data?.map((channel) => (
 										<label
 											className="grid min-h-16 cursor-pointer place-items-center content-center gap-1.5 rounded-lg bg-background/70 px-3 py-2.5 text-center text-sm ring-offset-background transition hover:bg-background has-checked:bg-primary/10 has-checked:ring-2 has-checked:ring-primary has-checked:ring-offset-2 has-focus-visible:ring-2 has-focus-visible:ring-ring"

@@ -159,6 +159,11 @@ export function ShopOrdersPage() {
 						<span className="text-muted-foreground text-xs">
 							{formatDateTime(row.original.createdAt)}
 						</span>
+						{row.original.source === "supplier_api" ? (
+							<Badge className="ms-2" variant="outline">
+								{m.shop_orders_source_api()}
+							</Badge>
+						) : null}
 					</div>
 				),
 			},

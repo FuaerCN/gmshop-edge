@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sensitiveProofSchema } from "#/features/auth/reauthentication-schema";
 import { userIdSchema } from "#/features/users/schema";
+import { walletAdjustmentSchema } from "#/features/wallet/schema";
 
 export const customerStatuses = ["active", "disabled"] as const;
 
@@ -30,3 +31,9 @@ export const customerIdSchema = z.object({ id: userIdSchema });
 export const customerSensitiveActionSchema = sensitiveProofSchema.extend({
 	id: userIdSchema,
 });
+
+export const customerWalletAdjustmentSchema = walletAdjustmentSchema
+	.omit({
+		userId: true,
+	})
+	.extend({ id: userIdSchema });

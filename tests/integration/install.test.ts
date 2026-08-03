@@ -30,14 +30,15 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 	afterEach(async () => miniflare.dispose());
 
 	it("keeps the GMShop baseline and applies incremental migrations", async () => {
-		const files = (
-			await readdir(new URL("../../drizzle/", import.meta.url))
-		).filter((name) => /^\d+_.+\.sql$/.test(name));
+		const files = (await readdir(new URL("../../drizzle/", import.meta.url)))
+			.filter((name) => /^\d+_.+\.sql$/.test(name))
+			.sort();
 		expect(files).toEqual([
 			"0000_gmshop.sql",
 			"0001_telegram_bot_support.sql",
 			"0002_glamorous_pete_wisdom.sql",
 			"0003_product_tag_names.sql",
+			"0004_plain_prima.sql",
 		]);
 		const legacyTables = await database
 			.prepare(
@@ -53,12 +54,17 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 				"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'sqlite_%' ORDER BY name",
 			)
 			.all<{ name: string }>();
-		expect(tables.results).toHaveLength(51);
+		expect(tables.results).toHaveLength(56);
 		expect(tables.results.map((table) => table.name)).toEqual(
 			expect.arrayContaining([
 				"telegram_web_support_conversations",
 				"telegram_web_support_replies",
 				"telegram_web_support_sends",
+				"supplier_api_keys",
+				"supplier_api_orders",
+				"supplier_export_listings",
+				"wallet_entries",
+				"wallet_topups",
 			]),
 		);
 		const foreignKeyFailures = await database

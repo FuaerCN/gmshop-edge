@@ -1,34 +1,44 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { LogOut, ShoppingCart } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Settings, ShoppingCart } from "lucide-react";
+import { type ComponentProps, useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
 import { Button } from "#/components/ui/button";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "#/components/ui/dropdown-menu";
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "#/components/ui/popover";
 import { authClient } from "#/features/auth/auth-client";
 import { isInternalIdentityEmail } from "#/features/auth/identity-email";
-import { CurrencySwitch } from "#/features/exchange-rates/currency-switch";
+import { getStorefrontAdminEntryFn } from "#/features/auth/server/session";
+import { useCurrency } from "#/features/exchange-rates/currency-context";
 import { useLocalCart } from "#/features/storefront/cart-storage";
-import { accountNavigation } from "#/features/storefront/components/account-navigation";
 import useDialogState from "#/hooks/use-dialog-state";
 import { AppTitle } from "#/layouts/components/app-title";
-import { LocaleSwitch } from "#/layouts/components/locale-switch";
 import { SignOutDialog } from "#/layouts/components/sign-out-dialog";
-import { ThemeSwitch } from "#/layouts/components/theme-switch";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
+import {
+	AccountSettingsPanel,
+	type HeaderUser,
+	type SettingsCurrency,
+	type SettingsPanelPage,
+} from "./account-settings-panel";
 
 export function PublicHeader() {
 	const session = authClient.useSession();
+	const currencySelection = useCurrency();
 	const user = session.data?.user;
+	const adminEntry = useQuery({
+		enabled: Boolean(user),
+		queryFn: () => getStorefrontAdminEntryFn(),
+		queryKey: ["auth", "storefront-admin-entry", user?.id],
+		retry: false,
+		staleTime: 60_000,
+	});
 	const signedIn = Boolean(user);
 	const navigation = publicNavigation({ signedIn });
 	const [stuck, setStuck] = useState(false);
@@ -38,6 +48,13 @@ export function PublicHeader() {
 		window.addEventListener("scroll", update, { passive: true });
 		return () => window.removeEventListener("scroll", update);
 	}, []);
+	const headerUser = user
+		? {
+				email: isInternalIdentityEmail(user.email) ? "" : user.email,
+				image: user.image,
+				name: user.name,
+			}
+		: null;
 	return (
 		<header
 			className={cn(
@@ -62,11 +79,13 @@ export function PublicHeader() {
 						))}
 					</nav>
 					<div className="flex items-center gap-1 ps-1">
-						<CurrencySwitch />
-						<LocaleSwitch />
-						<ThemeSwitch />
 						<CartAction />
-						<DesktopAccountActions user={user} />
+						<DesktopSettings
+							currencySelection={currencySelection}
+							root={adminEntry.data?.root}
+							user={headerUser}
+						/>
+						{user ? null : <SignInAction />}
 					</div>
 				</div>
 			</div>
@@ -74,76 +93,92 @@ export function PublicHeader() {
 	);
 }
 
-type HeaderUser = {
-	name?: string | null;
-	email?: string | null;
-	image?: string | null;
-};
-
-function DesktopAccountActions({ user }: { user?: HeaderUser | null }) {
+function DesktopSettings({
+	currencySelection,
+	root,
+	user,
+}: {
+	currencySelection: SettingsCurrency;
+	root?: boolean;
+	user?: HeaderUser | null;
+}) {
+	const [open, setOpen] = useState(false);
+	const [page, setPage] = useState<SettingsPanelPage>("main");
 	const [signOutOpen, setSignOutOpen] = useDialogState();
-	if (!user)
-		return (
-			<Button asChild>
-				<Link search={{ redirect: undefined }} to="/sign-in">
-					{m.public_sign_in()}
-				</Link>
-			</Button>
-		);
-	const email = isInternalIdentityEmail(user.email) ? "" : user.email || "";
-	const name = user.name || email || m.store_account_title();
-	const fallback = getUserFallback(name, email);
+	const handleOpenChange = (nextOpen: boolean) => {
+		setOpen(nextOpen);
+		if (!nextOpen) setPage("main");
+	};
 	return (
 		<>
-			<DropdownMenu modal={false}>
-				<DropdownMenuTrigger asChild>
-					<Button
-						aria-label={m.store_account_title()}
-						className="rounded-full"
-						size="icon"
-						variant="ghost"
-					>
-						<Avatar className="size-7">
-							<AvatarImage alt={name} src={user.image || ""} />
-							<AvatarFallback>{fallback}</AvatarFallback>
-						</Avatar>
-					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="w-64">
-					<DropdownMenuLabel className="font-normal">
-						<div className="grid gap-1">
-							<p className="truncate text-sm font-medium">{name}</p>
-							{email ? (
-								<p className="truncate text-xs text-muted-foreground">
-									{email}
-								</p>
-							) : null}
-						</div>
-					</DropdownMenuLabel>
-					<DropdownMenuSeparator />
-					{accountNavigation.map((item) => (
-						<DropdownMenuItem asChild key={item.to}>
-							<Link to={item.to}>
-								<item.icon />
-								{item.label()}
-							</Link>
-						</DropdownMenuItem>
-					))}
-					<DropdownMenuSeparator />
-					<DropdownMenuItem
-						variant="destructive"
-						onClick={() => setSignOutOpen(true)}
-					>
-						<LogOut />
-						{m.layout_signOut_title()}
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+			<Popover open={open} onOpenChange={handleOpenChange}>
+				<PopoverTrigger asChild>
+					<SettingsTrigger user={user} />
+				</PopoverTrigger>
+				<PopoverContent align="end" className="w-72 overflow-hidden p-0">
+					<AccountSettingsPanel
+						currencySelection={currencySelection}
+						onClose={() => handleOpenChange(false)}
+						onPageChange={setPage}
+						onSignOut={() => {
+							handleOpenChange(false);
+							setSignOutOpen(true);
+						}}
+						page={page}
+						root={root}
+						user={user}
+					/>
+				</PopoverContent>
+			</Popover>
 			<SignOutDialog
 				open={Boolean(signOutOpen)}
 				onOpenChange={setSignOutOpen}
 			/>
 		</>
+	);
+}
+
+function SettingsTrigger({
+	user,
+	...triggerProps
+}: { user?: HeaderUser | null } & ComponentProps<typeof Button>) {
+	if (!user)
+		return (
+			<Button
+				{...triggerProps}
+				aria-label={m.store_header_settings()}
+				className={cn("rounded-full", triggerProps.className)}
+				size="icon"
+				variant="ghost"
+			>
+				<Settings />
+			</Button>
+		);
+	const email = user.email || "";
+	const name = user.name || email || m.store_account_title();
+	return (
+		<Button
+			{...triggerProps}
+			aria-label={m.store_account_title()}
+			className={cn("rounded-full", triggerProps.className)}
+			size="icon"
+			variant="ghost"
+		>
+			<Avatar className="size-7">
+				<AvatarImage alt={name} src={user.image || ""} />
+				<AvatarFallback>{getUserFallback(name, email)}</AvatarFallback>
+			</Avatar>
+		</Button>
+	);
+}
+
+function SignInAction() {
+	return (
+		<Button asChild>
+			<Link search={{ redirect: undefined }} to="/sign-in">
+				{m.public_sign_in()}
+			</Link>
+		</Button>
 	);
 }
 

@@ -28,6 +28,14 @@ export function paymentProviderFamily(
 	return provider;
 }
 
+export function paymentProviderDefaultCurrency(
+	provider: PaymentProvider,
+	storeCurrency: string,
+) {
+	const family = paymentProviderFamily(provider);
+	return family === "alipay" || family === "wechat" ? "CNY" : storeCurrency;
+}
+
 export type CreatePaymentInput = {
 	attemptId: string;
 	orderId: string;
@@ -148,9 +156,7 @@ const paymentMethodSchema = z
 	.regex(/^[a-z][a-z0-9_-]{0,39}$/)
 	.default("alipay");
 
-export const gmpayCredentialSchema = epusdtCredentialSchema().extend({
-	paymentMethod: paymentMethodSchema,
-});
+export const gmpayCredentialSchema = epusdtCredentialSchema();
 export const epayCredentialSchema = epusdtCredentialSchema()
 	.extend({ paymentMethod: paymentMethodSchema })
 	.superRefine((value, context) => {

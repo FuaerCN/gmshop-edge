@@ -30,6 +30,7 @@ interface OverlayFormProps {
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 	onFinish?: (values: Record<string, unknown>) => void | Promise<void>;
+	validate?: ProFormValidator;
 	onFinishFailed?: (errors: unknown) => void;
 	onCancel?: () => void | Promise<void>;
 	submitter?: false | OverlayFormSubmitter;
@@ -37,6 +38,11 @@ interface OverlayFormProps {
 	fieldsClassName?: string;
 	modalClassName?: string;
 }
+
+export type ProFormFieldErrors = Partial<Record<string, string[]>>;
+type ProFormValidator = (
+	values: Record<string, unknown>,
+) => ProFormFieldErrors | Promise<ProFormFieldErrors>;
 
 interface ProFormProps {
 	id?: string;
@@ -224,6 +230,7 @@ export function ModalForm({
 	open: controlledOpen,
 	onOpenChange: controlledOnOpenChange,
 	onFinish,
+	validate,
 	onFinishFailed,
 	onCancel,
 	submitter,
@@ -231,14 +238,23 @@ export function ModalForm({
 	fieldsClassName,
 	modalClassName,
 }: OverlayFormProps) {
-	const { formRef, open, setOpen, loading, handleSubmit, handleCancel } =
-		useOverlayForm({
-			open: controlledOpen,
-			onOpenChange: controlledOnOpenChange,
-			onFinish,
-			onFinishFailed,
-			onCancel,
-		});
+	const {
+		formRef,
+		open,
+		setOpen,
+		loading,
+		fieldErrors,
+		clearFieldError,
+		handleSubmit,
+		handleCancel,
+	} = useOverlayForm({
+		open: controlledOpen,
+		onOpenChange: controlledOnOpenChange,
+		onFinish,
+		validate,
+		onFinishFailed,
+		onCancel,
+	});
 
 	return (
 		<ProModal
@@ -262,6 +278,7 @@ export function ModalForm({
 		>
 			<form
 				ref={formRef}
+				noValidate={Boolean(validate)}
 				onSubmit={async (event) => {
 					event.preventDefault();
 					await handleSubmit();
@@ -273,6 +290,8 @@ export function ModalForm({
 						<ProSchemaFields
 							schema={schema}
 							initialValues={initialValues}
+							errors={fieldErrors}
+							onValueChange={clearFieldError}
 							className={fieldsClassName}
 						/>
 					)}
@@ -302,6 +321,7 @@ export function DrawerForm({
 	open: controlledOpen,
 	onOpenChange: controlledOnOpenChange,
 	onFinish,
+	validate,
 	onFinishFailed,
 	onCancel,
 	submitter,
@@ -309,14 +329,23 @@ export function DrawerForm({
 	fieldsClassName,
 	side = "right",
 }: OverlayFormProps & { side?: "top" | "right" | "bottom" | "left" }) {
-	const { formRef, open, setOpen, loading, handleSubmit, handleCancel } =
-		useOverlayForm({
-			open: controlledOpen,
-			onOpenChange: controlledOnOpenChange,
-			onFinish,
-			onFinishFailed,
-			onCancel,
-		});
+	const {
+		formRef,
+		open,
+		setOpen,
+		loading,
+		fieldErrors,
+		clearFieldError,
+		handleSubmit,
+		handleCancel,
+	} = useOverlayForm({
+		open: controlledOpen,
+		onOpenChange: controlledOnOpenChange,
+		onFinish,
+		validate,
+		onFinishFailed,
+		onCancel,
+	});
 
 	return (
 		<ProDrawer
@@ -329,6 +358,7 @@ export function DrawerForm({
 		>
 			<form
 				ref={formRef}
+				noValidate={Boolean(validate)}
 				onSubmit={async (event) => {
 					event.preventDefault();
 					await handleSubmit();
@@ -340,6 +370,8 @@ export function DrawerForm({
 						<ProSchemaFields
 							schema={schema}
 							initialValues={initialValues}
+							errors={fieldErrors}
+							onValueChange={clearFieldError}
 							className={fieldsClassName}
 						/>
 					)}
@@ -363,30 +395,61 @@ function useOverlayForm({
 	open: controlledOpen,
 	onOpenChange,
 	onFinish,
+	validate,
 	onFinishFailed,
 	onCancel,
 }: {
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 	onFinish?: (values: Record<string, unknown>) => void | Promise<void>;
+	validate?: ProFormValidator;
 	onFinishFailed?: (errors: unknown) => void;
 	onCancel?: () => void | Promise<void>;
 }) {
 	const formRef = useRef<HTMLFormElement>(null);
 	const [internalOpen, setInternalOpen] = useState(false);
 	const [loading, setLoading] = useState(false);
+	const [fieldErrors, setFieldErrors] = useState<ProFormFieldErrors>({});
 	const open = controlledOpen ?? internalOpen;
 
 	function setOpen(value: boolean) {
 		if (controlledOpen === undefined) setInternalOpen(value);
+		if (!value) setFieldErrors({});
 		onOpenChange?.(value);
+	}
+
+	function clearFieldError(name: string) {
+		setFieldErrors((current) => {
+			if (!(name in current)) return current;
+			const next = { ...current };
+			delete next[name];
+			return next;
+		});
 	}
 
 	async function handleSubmit() {
 		if (loading) return;
 		setLoading(true);
 		try {
-			await onFinish?.(getFormValues(formRef.current));
+			const values = getFormValues(formRef.current);
+			const errors = (await validate?.(values)) ?? {};
+			const firstInvalidField = Object.keys(errors).find(
+				(name) => errors[name]?.length,
+			);
+			if (firstInvalidField) {
+				setFieldErrors(errors);
+				requestAnimationFrame(() => {
+					const field = Array.from(formRef.current?.elements ?? []).find(
+						(element) =>
+							element.id === firstInvalidField &&
+							element.getAttribute("type") !== "hidden",
+					);
+					if (field instanceof HTMLElement) field.focus();
+				});
+				return;
+			}
+			setFieldErrors({});
+			await onFinish?.(values);
 			setOpen(false);
 			formRef.current?.reset();
 		} catch (err) {
@@ -402,7 +465,16 @@ function useOverlayForm({
 		await onCancel?.();
 	}
 
-	return { formRef, open, setOpen, loading, handleSubmit, handleCancel };
+	return {
+		formRef,
+		open,
+		setOpen,
+		loading,
+		fieldErrors,
+		clearFieldError,
+		handleSubmit,
+		handleCancel,
+	};
 }
 
 function OverlayFormFooter({
@@ -565,10 +637,14 @@ export function FormItem({
 function ProSchemaFields({
 	schema,
 	initialValues,
+	errors,
+	onValueChange,
 	className,
 }: {
 	schema: ProSchemaFormItem[];
 	initialValues?: ProSchemaFormValues;
+	errors?: ProFormFieldErrors;
+	onValueChange?: (name: string) => void;
 	className?: string;
 }) {
 	const [values, setValues] = useState<ProSchemaFormValues>(() =>
@@ -589,10 +665,14 @@ function ProSchemaFields({
 
 				const field = {
 					value: values[item.name],
-					onChange: (nextValue: ProSchemaFormValue) =>
-						setValues((current) => ({ ...current, [item.name]: nextValue })),
+					onChange: (nextValue: ProSchemaFormValue) => {
+						setValues((current) => ({ ...current, [item.name]: nextValue }));
+						onValueChange?.(item.name);
+					},
 				};
 				const hiddenValues = getHiddenValues(field.value);
+				const fieldErrors = errors?.[item.name] ?? item.errors;
+				const fieldItem = { ...item, errors: fieldErrors };
 
 				return (
 					<FormItem
@@ -603,13 +683,13 @@ function ProSchemaFields({
 						htmlFor={item.name}
 						description={item.description}
 						tooltip={item.tooltip}
-						errors={item.errors}
+						errors={fieldErrors}
 						extra={item.extra}
 						{...item.formItemProps}
 					>
-						{item.render
-							? item.render(field, item)
-							: renderSchemaField(item, field)}
+						{fieldItem.render
+							? fieldItem.render(field, fieldItem)
+							: renderSchemaField(fieldItem, field)}
 						{hiddenValues.map((fieldValue) => (
 							<input
 								key={`${item.name}-${fieldValue}`}
@@ -643,6 +723,7 @@ function renderSchemaField(
 					value={textValue}
 					disabled={item.disabled}
 					required={item.required}
+					aria-invalid={Boolean(item.errors?.length)}
 					onChange={(event) => field.onChange(event.target.value)}
 					{...fieldProps}
 				/>
@@ -654,6 +735,7 @@ function renderSchemaField(
 					value={textValue}
 					disabled={item.disabled}
 					required={item.required}
+					aria-invalid={Boolean(item.errors?.length)}
 					onChange={(event) => field.onChange(event.target.value)}
 					{...fieldProps}
 				/>
@@ -786,6 +868,7 @@ function renderSchemaField(
 			value={textValue}
 			disabled={item.disabled}
 			required={item.required}
+			aria-invalid={Boolean(item.errors?.length)}
 			onChange={(event) => field.onChange(event.target.value)}
 			{...fieldProps}
 		/>

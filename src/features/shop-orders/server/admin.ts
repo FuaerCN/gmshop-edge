@@ -51,6 +51,7 @@ type OrderRow = {
 	item_count: number;
 	delivery_pending_count: number;
 	delivery_failed_count: number;
+	source: "storefront" | "supplier_api";
 };
 
 export const listShopOrdersFn = createServerFn({ method: "GET" })
@@ -76,6 +77,8 @@ export const listShopOrdersFn = createServerFn({ method: "GET" })
 			db.$client
 				.prepare(
 					`SELECT o.*, u.name AS user_name,
+					 CASE WHEN EXISTS (SELECT 1 FROM supplier_api_orders api
+					  WHERE api.shop_order_id = o.id) THEN 'supplier_api' ELSE 'storefront' END AS source,
 					 (SELECT COUNT(*) FROM shop_order_items oi WHERE oi.order_id = o.id) AS item_count,
 					 (SELECT COUNT(*) FROM delivery_records dr INNER JOIN shop_order_items oi
 					  ON oi.id = dr.order_item_id WHERE oi.order_id = o.id
@@ -107,6 +110,8 @@ export const getShopOrderFn = createServerFn({ method: "GET" })
 		const order = await db.$client
 			.prepare(
 				`SELECT o.*, u.name AS user_name,
+				 CASE WHEN EXISTS (SELECT 1 FROM supplier_api_orders api
+				  WHERE api.shop_order_id = o.id) THEN 'supplier_api' ELSE 'storefront' END AS source,
 				 (SELECT COUNT(*) FROM shop_order_items oi WHERE oi.order_id = o.id) AS item_count,
 				 (SELECT COUNT(*) FROM delivery_records dr INNER JOIN shop_order_items oi
 				  ON oi.id = dr.order_item_id WHERE oi.order_id = o.id
@@ -318,6 +323,7 @@ function presentOrder(row: OrderRow) {
 	return {
 		id: row.id,
 		orderNumber: row.order_number,
+		source: row.source,
 		userId: row.user_id,
 		userName: row.user_name,
 		contactEmail: row.contact_email,

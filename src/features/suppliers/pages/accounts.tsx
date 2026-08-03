@@ -268,7 +268,12 @@ export function SupplierAccountsPage() {
 					fieldsClassName="grid space-y-0 gap-x-4 gap-y-3 sm:grid-cols-2"
 					modalClassName="sm:max-w-2xl"
 					onFinish={async (values) => {
-						const provider = values.provider === "acg" ? "acg" : "dujiao_next";
+						const provider =
+							values.provider === "acg"
+								? "acg"
+								: values.provider === "gmshop_edge"
+									? "gmshop_edge"
+									: "dujiao_next";
 						const credentials =
 							provider === "acg"
 								? values.apiId || values.appKey
@@ -331,6 +336,7 @@ function accountFormSchema(editing: boolean) {
 				options: [
 					{ value: "acg", label: "异次元发卡" },
 					{ value: "dujiao_next", label: "独角数卡 Next" },
+					{ value: "gmshop_edge", label: m.supplier_provider_gmshop_edge() },
 				],
 			},
 		},
@@ -409,7 +415,7 @@ function accountFormSchema(editing: boolean) {
 			label: m.supplier_api_key(),
 			tooltip: credentialTooltip,
 			hidden: (values: Record<string, unknown>) =>
-				values.provider !== "dujiao_next",
+				values.provider !== "dujiao_next" && values.provider !== "gmshop_edge",
 			required: !editing,
 			fieldProps: {
 				autoCapitalize: "none",
@@ -423,7 +429,7 @@ function accountFormSchema(editing: boolean) {
 			valueType: "password" as const,
 			tooltip: credentialTooltip,
 			hidden: (values: Record<string, unknown>) =>
-				values.provider !== "dujiao_next",
+				values.provider !== "dujiao_next" && values.provider !== "gmshop_edge",
 			required: !editing,
 			fieldProps: {
 				autoComplete: "new-password",
@@ -480,7 +486,10 @@ function accountValues(account: Account | null) {
 }
 
 function providerLabel(provider: string) {
-	return provider === "acg" ? "异次元发卡" : "独角数卡 Next";
+	if (provider === "acg") return "异次元发卡";
+	return provider === "gmshop_edge"
+		? m.supplier_provider_gmshop_edge()
+		: "独角数卡 Next";
 }
 
 function healthLabel(status: Account["healthStatus"]) {

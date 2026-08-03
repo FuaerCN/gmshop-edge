@@ -1,8 +1,7 @@
 import { Header } from "#/layouts/components/header";
-import { LocaleSwitch } from "#/layouts/components/locale-switch";
 import { ProfileDropdown } from "#/layouts/components/profile-dropdown";
+import { QuickSettings } from "#/layouts/components/quick-settings";
 import { Search } from "#/layouts/components/search";
-import { ThemeSwitch } from "#/layouts/components/theme-switch";
 import { TopNav } from "#/layouts/components/top-nav";
 
 interface AppHeaderProps {
@@ -21,8 +20,7 @@ export function AppHeader({ fixed = true, topNav }: AppHeaderProps) {
 			{topNav ? <TopNav links={topNav} /> : <Search />}
 			<div className="ms-auto flex items-center space-x-4">
 				{topNav ? <Search /> : null}
-				<LocaleSwitch />
-				<ThemeSwitch />
+				<QuickSettings />
 				<ProfileDropdown />
 			</div>
 		</Header>

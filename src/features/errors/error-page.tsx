@@ -2,8 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppTitle } from "#/layouts/components/app-title";
-import { LocaleSwitch } from "#/layouts/components/locale-switch";
-import { ThemeSwitch } from "#/layouts/components/theme-switch";
+import { QuickSettings } from "#/layouts/components/quick-settings";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
 
@@ -46,10 +45,7 @@ export function ErrorPage({
 						>
 							<AppTitle />
 						</Link>
-						<div className="flex items-center gap-1">
-							<LocaleSwitch />
-							<ThemeSwitch />
-						</div>
+						<QuickSettings />
 					</header>
 				</>
 			) : null}

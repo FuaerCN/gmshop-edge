@@ -1,11 +1,13 @@
 import {
 	acgCredentialsSchema,
 	dujiaoNextCredentialsSchema,
+	gmshopEdgeCredentialsSchema,
 	type SupplierProvider,
 } from "../schema";
 import type { SupplierCredentials } from "../secrets";
 import { AcgAdapter } from "./acg";
 import { DujiaoNextAdapter } from "./dujiao-next";
+import { GmshopEdgeAdapter } from "./gmshop-edge";
 import type { SupplierAdapter } from "./types";
 
 export function createSupplierAdapter(input: {
@@ -27,8 +29,19 @@ export function createSupplierAdapter(input: {
 			fetcher: input.fetcher,
 		});
 	}
-	const credentials = dujiaoNextCredentialsSchema.parse(input.credentials);
-	return new DujiaoNextAdapter({
+	if (input.provider === "dujiao_next") {
+		const credentials = dujiaoNextCredentialsSchema.parse(input.credentials);
+		return new DujiaoNextAdapter({
+			baseUrl: input.baseUrl,
+			apiKey: credentials.apiKey,
+			apiSecret: credentials.apiSecret,
+			currency: input.currency,
+			currencyDecimals: input.currencyDecimals,
+			fetcher: input.fetcher,
+		});
+	}
+	const credentials = gmshopEdgeCredentialsSchema.parse(input.credentials);
+	return new GmshopEdgeAdapter({
 		baseUrl: input.baseUrl,
 		apiKey: credentials.apiKey,
 		apiSecret: credentials.apiSecret,

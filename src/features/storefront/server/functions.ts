@@ -6,6 +6,7 @@ import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { publishPendingDeliveries } from "#/features/fulfillment/server/outbox";
 import {
 	completeFreeStoreOrder,
+	completeWalletStoreOrder,
 	createShopPayment,
 } from "#/features/shop-payments/server/service";
 import {
@@ -149,6 +150,28 @@ export const checkoutStoreOrderFn = createServerFn({ method: "POST" })
 				order: { ...order, status: "paid" },
 				payment: null,
 				accountOrder: Boolean(account),
+			};
+		}
+		if (data.walletPayment) {
+			if (!account)
+				throw new DomainError(
+					"authentication_required",
+					401,
+					"Sign in required",
+				);
+			await completeWalletStoreOrder(db, {
+				orderId: order.id,
+				userId: account.user.id,
+			});
+			const queue = getCloudflareEnv(request).COMMERCE_QUEUE;
+			if (queue) {
+				await publishPendingDeliveries(db, queue);
+				await publishPendingSupplierOrders(db, queue);
+			}
+			return {
+				order: { ...order, status: "paid" },
+				payment: null,
+				accountOrder: true,
 			};
 		}
 		if (!data.paymentChannelId)

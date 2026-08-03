@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>GMShop Edge HTTP API</title>
+	</head>
+	<body>
+		<div id="app"></div>
+		<script src="https://cdn.jsdmirror.com/npm/@scalar/api-reference"></script>
+		<script>
+			Scalar.createApiReference("#app", {
+				url: "/openapi.yaml",
+				theme: "purple",
+				layout: "modern",
+				hideModels: false,
+			});
+		</script>
+	</body>
+</html>

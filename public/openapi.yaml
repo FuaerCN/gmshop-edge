@@ -1,262 +1,507 @@
 openapi: 3.1.0
 info:
   title: GMShop Edge HTTP API
-  version: 1.4.0
-  description: >-
-    Browser, provider callback, and private-object boundaries exposed by one
-    GMShop Edge deployment. TanStack Server Functions used by the UI are not a
-    public merchant protocol.
-x-gmshop-server-functions:
-  description: >-
-    Same-origin TanStack Server Functions used by the storefront. They are
-    CSRF/origin checked application endpoints rather than merchant APIs.
-  operations:
-    - cart.preview
-    - cart.sync
-    - cart.setItem
-    - cart.removeItem
-    - checkout.createOrder
-    - checkout.quotePaymentCurrency
-    - commerce.trackEvent
-    - entitlement.renew
-    - catalog.createProductDraft
-    - catalog.getProductEditor
-    - catalog.saveProductContent
-    - catalog.saveProductSellableItems
-    - catalog.publishProduct
+  version: 1.0.0
+  description: |
+    Complete reference for GMShop Edge's explicit HTTP surface: authentication,
+    public media, customer fulfillment, web support, provider callbacks,
+    administration, and the native supplier protocol.
+
+    The `/api/v1/supplier/*` protocol is signed with HMAC-SHA256. Its signing payload is the
+    uppercase HTTP method, path including the raw query, Unix timestamp,
+    nonce, and SHA-256 hex digest of the raw request body, joined by newlines.
+    TanStack Start server-function transport is an internal implementation detail and is
+    intentionally not advertised as a stable public API.
 servers:
-  - url: /
+  - url: https://shop.example.com
+    description: Replace with the supplier GMShop Edge origin
+tags:
+  - name: Authentication
+  - name: Public assets
+  - name: Customer fulfillment
+  - name: Automation callbacks
+  - name: Payment callbacks
+  - name: Web support
+  - name: Integration callbacks
+  - name: Administration
+  - name: Connection
+  - name: Catalog
+  - name: Orders
+  - name: Top-ups
+security:
+  - ApiKey: []
+    Timestamp: []
+    Nonce: []
+    Signature: []
 paths:
-  /api/auth/{path}:
-    parameters:
-      - $ref: '#/components/parameters/AuthPath'
+  /api/auth/{authPath}:
     get:
+      tags: [Authentication]
+      summary: Better Auth endpoint
+      description: Pass-through to the configured Better Auth handler. Available subpaths and payloads depend on enabled authentication providers.
       operationId: betterAuthGet
+      security: []
+      parameters: [{ $ref: "#/components/parameters/AuthPath" }]
       responses:
-        '200': { description: Better Auth response }
+        "200": { description: Better Auth response }
     post:
+      tags: [Authentication]
+      summary: Better Auth endpoint
+      description: Pass-through to the configured Better Auth handler. CSRF, Origin, and provider-specific validation apply.
       operationId: betterAuthPost
-      responses:
-        '200': { description: Better Auth response }
-        '400': { $ref: '#/components/responses/Problem' }
-  /api/shop/products/{productId}/cover:
-    get:
-      operationId: getProductCover
-      parameters:
-        - $ref: '#/components/parameters/ProductId'
-      responses:
-        '200': { $ref: '#/components/responses/Image' }
-        '304': { description: Not modified }
-        '404': { description: Active product image not found }
-  /api/shop/products/{productId}/media/{mediaId}:
-    get:
-      operationId: getProductMedia
-      parameters:
-        - $ref: '#/components/parameters/ProductId'
-        - name: mediaId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200': { $ref: '#/components/responses/Image' }
-        '304': { description: Not modified }
-        '404': { description: Active product media not found }
-  /api/shop/payments/{channelId}/webhook:
-    parameters:
-      - name: channelId
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
-    get:
-      operationId: paymentWebhookGet
-      description: Verified GMpay/EPay-compatible callback query. Provider signatures remain mandatory.
-      responses:
-        '200': { description: Verified and idempotently processed }
-        '400': { $ref: '#/components/responses/Problem' }
-        '401': { $ref: '#/components/responses/Problem' }
-    post:
-      operationId: paymentWebhookPost
-      description: Verified provider callback body. The quoted attempt amount and fiat currency must match.
+      security: []
+      parameters: [{ $ref: "#/components/parameters/AuthPath" }]
       requestBody:
-        required: true
         content:
           application/json: { schema: { type: object, additionalProperties: true } }
       responses:
-        '200': { description: Verified and idempotently processed }
-        '400': { $ref: '#/components/responses/Problem' }
-        '401': { $ref: '#/components/responses/Problem' }
-  /api/shop/automation/callback:
-    post:
-      operationId: automationCallback
+        "200": { description: Better Auth response }
+  /api/site-logo:
+    get:
+      tags: [Public assets]
+      summary: Read the current site logo
+      operationId: getSiteLogo
+      security: []
+      responses: { "200": { $ref: "#/components/responses/BinaryAsset" }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/configuration-logo/{scope}/{id}:
+    get:
+      tags: [Public assets]
+      summary: Read a public integration logo
+      operationId: getConfigurationLogo
+      security: []
       parameters:
-        - $ref: '#/components/parameters/GMShopSignature'
-      requestBody:
-        required: true
-        content:
-          application/json: { schema: { $ref: '#/components/schemas/AutomationCallback' } }
-      responses:
-        '200': { description: Verified and idempotently processed }
-        '400': { $ref: '#/components/responses/Problem' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
-  /api/shop/automation/{jobId}/artifacts/{fileName}:
-    post:
-      operationId: uploadAutomationArtifact
+        - { name: scope, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses: { "200": { $ref: "#/components/responses/BinaryAsset" }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/shop/products/{productId}/cover:
+    get:
+      tags: [Public assets]
+      summary: Read a published product cover
+      operationId: getProductCover
+      security: []
+      parameters: [{ $ref: "#/components/parameters/ProductId" }]
+      responses: { "200": { $ref: "#/components/responses/BinaryAsset" }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/shop/products/{productId}/media/{mediaId}:
+    get:
+      tags: [Public assets]
+      summary: Read published product media
+      operationId: getProductMedia
+      security: []
       parameters:
-        - $ref: '#/components/parameters/JobId'
-        - name: fileName
-          in: path
-          required: true
-          schema: { type: string, pattern: '^[^/\\]{1,255}$' }
-        - name: X-GMShop-Artifact-Id
-          in: header
-          required: true
-          schema: { type: string, format: uuid }
-        - $ref: '#/components/parameters/GMShopSignature'
-      requestBody:
-        required: true
-        content:
-          application/octet-stream: { schema: { type: string, format: binary } }
-      responses:
-        '200': { description: Identical artifact upload already stored }
-        '201': { description: Artifact stored }
-        '400': { $ref: '#/components/responses/Problem' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
-        '413': { $ref: '#/components/responses/Problem' }
+        - { $ref: "#/components/parameters/ProductId" }
+        - { name: mediaId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses: { "200": { $ref: "#/components/responses/BinaryAsset" }, "404": { $ref: "#/components/responses/NotFound" } }
   /api/shop/orders/{orderNumber}/deliveries/{deliveryId}/reveal:
     post:
-      operationId: revealDelivery
+      tags: [Customer fulfillment]
+      summary: Reveal a stock delivery
+      description: Requires the owning browser session, or the guest-order verification accepted by the storefront.
+      operationId: revealStockDelivery
+      security: [{ SessionCookie: [] }]
       parameters:
-        - $ref: '#/components/parameters/OrderNumber'
-        - name: deliveryId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/OrderAccess' }
-      responses:
-        '200':
-          description: Authorized, no-store delivery content
-          content:
-            application/json: { schema: { type: object, required: [content], properties: { content: { type: string } } } }
-        '401': { $ref: '#/components/responses/Problem' }
-        '404': { $ref: '#/components/responses/Problem' }
+        - { $ref: "#/components/parameters/OrderNumber" }
+        - { name: deliveryId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses: { "200": { description: Decrypted delivery response }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } }
   /api/shop/orders/{orderNumber}/downloads/{assetId}:
     post:
-      operationId: downloadPurchasedAsset
+      tags: [Customer fulfillment]
+      summary: Download a private order asset
+      operationId: downloadOrderAsset
+      security: [{ SessionCookie: [] }]
       parameters:
-        - $ref: '#/components/parameters/OrderNumber'
-        - name: assetId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+        - { $ref: "#/components/parameters/OrderNumber" }
+        - { name: assetId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
-        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/OrderAccess' }
-      responses:
-        '200': { $ref: '#/components/responses/Binary' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '404': { $ref: '#/components/responses/Problem' }
-  /api/shop/orders/{orderNumber}/automation/{jobId}/artifacts/{artifactId}:
-    post:
-      operationId: downloadAutomationArtifact
-      parameters:
-        - $ref: '#/components/parameters/OrderNumber'
-        - name: jobId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-        - name: artifactId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/OrderAccess' }
-      responses:
-        '200': { $ref: '#/components/responses/Binary' }
-        '401': { $ref: '#/components/responses/Problem' }
-        '404': { $ref: '#/components/responses/Problem' }
+            schema: { type: object, properties: { email: { type: string, format: email } } }
+      responses: { "200": { $ref: "#/components/responses/BinaryAsset" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } }
   /api/shop/orders/{orderNumber}/automation:
     post:
-      operationId: createCustomerAutomation
-      parameters:
-        - $ref: '#/components/parameters/OrderNumber'
+      tags: [Customer fulfillment]
+      summary: Start an automation fulfillment job
+      operationId: createOrderAutomationJob
+      security: [{ SessionCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/OrderNumber" }]
       requestBody:
         required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [entitlementId, methodId, idempotencyKey]
-              properties:
-                entitlementId: { type: string, format: uuid }
-                methodId: { type: string, format: uuid }
-                idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
-                notificationChannel:
-                  type: string
-                  enum: [none, email]
-                  default: none
-                lookupToken: { type: string, pattern: '^[0-9a-fA-F]{48}$' }
-                authorizationValues: { type: object, additionalProperties: true }
-                automationValues: { type: object, additionalProperties: true }
-      responses:
-        '200': { description: Existing idempotent automation job }
-        '201': { description: Automation job accepted }
-        '401': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAutomationJob" } } }
+      responses: { "201": { description: Automation job created }, "409": { $ref: "#/components/responses/Conflict" } }
   /api/shop/orders/{orderNumber}/automation/{jobId}/cancel:
     post:
-      operationId: cancelCustomerAutomation
-      parameters:
-        - $ref: '#/components/parameters/OrderNumber'
-        - $ref: '#/components/parameters/JobId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/OrderAccess' }
-      responses:
-        '200': { description: Automation job cancelled or already in the requested state }
-        '401': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
+      tags: [Customer fulfillment]
+      summary: Cancel an eligible automation job
+      operationId: cancelOrderAutomationJob
+      security: [{ SessionCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/OrderNumber" }, { $ref: "#/components/parameters/JobId" }]
+      responses: { "200": { description: Updated job }, "409": { $ref: "#/components/responses/Conflict" } }
   /api/shop/orders/{orderNumber}/automation/{jobId}/retry:
     post:
-      operationId: retryCustomerAutomation
+      tags: [Customer fulfillment]
+      summary: Retry an eligible automation job
+      operationId: retryOrderAutomationJob
+      security: [{ SessionCookie: [] }]
+      parameters: [{ $ref: "#/components/parameters/OrderNumber" }, { $ref: "#/components/parameters/JobId" }]
+      responses: { "200": { description: Updated job }, "409": { $ref: "#/components/responses/Conflict" } }
+  /api/shop/orders/{orderNumber}/automation/{jobId}/artifacts/{artifactId}:
+    post:
+      tags: [Customer fulfillment]
+      summary: Download a private automation artifact
+      operationId: downloadAutomationArtifact
+      security: [{ SessionCookie: [] }]
       parameters:
-        - $ref: '#/components/parameters/OrderNumber'
-        - $ref: '#/components/parameters/JobId'
+        - { $ref: "#/components/parameters/OrderNumber" }
+        - { $ref: "#/components/parameters/JobId" }
+        - { name: artifactId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses: { "200": { $ref: "#/components/responses/BinaryAsset" }, "403": { $ref: "#/components/responses/Forbidden" } }
+  /api/shop/automation/callback:
+    post:
+      tags: [Automation callbacks]
+      summary: Receive a signed automation provider result
+      operationId: automationCallback
+      security: [{ AutomationSignature: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AutomationCallback" } } }
+      responses: { "200": { description: Result accepted }, "401": { $ref: "#/components/responses/Unauthorized" } }
+  /api/shop/automation/{jobId}/artifacts/{fileName}:
+    post:
+      tags: [Automation callbacks]
+      summary: Upload a signed automation artifact
+      operationId: uploadAutomationArtifact
+      security: [{ AutomationSignature: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/JobId" }
+        - { name: fileName, in: path, required: true, schema: { type: string } }
+        - { name: X-GMShop-Artifact-Id, in: header, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/octet-stream: { schema: { type: string, format: binary } } }
+      responses: { "201": { description: Artifact accepted }, "401": { $ref: "#/components/responses/Unauthorized" } }
+  /api/shop/payments/{channelId}/webhook:
+    get:
+      tags: [Payment callbacks]
+      summary: Receive a payment provider callback
+      description: Provider-specific query and signature validation apply.
+      operationId: paymentWebhookGet
+      security: []
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      responses: { "200": { description: Callback acknowledged } }
+    post:
+      tags: [Payment callbacks]
+      summary: Receive a payment provider webhook
+      description: The raw payload and provider-specific signature are verified before processing.
+      operationId: paymentWebhookPost
+      security: []
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      requestBody: { content: { application/json: { schema: { type: object, additionalProperties: true } }, application/x-www-form-urlencoded: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "200": { description: Webhook acknowledged }, "400": { $ref: "#/components/responses/BadRequest" } }
+  /api/support/web/status:
+    get:
+      tags: [Web support]
+      summary: Read web-support availability
+      operationId: getWebSupportStatus
+      security: []
+      responses: { "200": { description: Support configuration and availability } }
+  /api/support/web/conversations:
+    post:
+      tags: [Web support]
+      summary: Create or resume an encrypted support conversation
+      operationId: createWebSupportConversation
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WebSupportConversation" } } } }
+      responses: { "200": { description: Conversation and secure session cookie } }
+  /api/support/web/current:
+    get:
+      tags: [Web support]
+      summary: Read the current support conversation
+      operationId: getCurrentWebSupportConversation
+      security: [{ WebSupportCookie: [] }]
+      parameters: [{ name: after, in: query, schema: { type: integer, minimum: 0 } }]
+      responses: { "200": { description: Conversation and encrypted replies }, "401": { $ref: "#/components/responses/Unauthorized" } }
+  /api/support/web/messages:
+    post:
+      tags: [Web support]
+      summary: Send a support message
+      operationId: sendWebSupportMessage
+      security: [{ WebSupportCookie: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WebSupportMessage" } } } }
+      responses: { "200": { description: Message accepted } }
+  /api/support/web/replies/ack:
+    post:
+      tags: [Web support]
+      summary: Acknowledge encrypted support replies
+      operationId: acknowledgeWebSupportReplies
+      security: [{ WebSupportCookie: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WebSupportAck" } } } }
+      responses: { "200": { description: Replies acknowledged } }
+  /api/support/web/close:
+    post:
+      tags: [Web support]
+      summary: Close the current support conversation
+      operationId: closeWebSupportConversation
+      security: [{ WebSupportCookie: [] }]
+      requestBody: { content: { application/json: { schema: { type: object, maxProperties: 0 } } } }
+      responses: { "200": { description: Conversation closed } }
+  /api/telegram/webhook:
+    post:
+      tags: [Integration callbacks]
+      summary: Receive a Telegram Bot API webhook
+      operationId: telegramWebhook
+      security: [{ TelegramSecret: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "200": { description: Telegram update processed }, "401": { $ref: "#/components/responses/Unauthorized" } }
+  /api/suppliers/dujiao-next/callback/{accountId}:
+    post:
+      tags: [Integration callbacks]
+      summary: Receive a Dujiao Next supplier callback
+      operationId: dujiaoSupplierCallback
+      security: []
+      parameters: [{ name: accountId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "200": { description: Callback acknowledged }, "401": { $ref: "#/components/responses/Unauthorized" } }
+  /api/admin/download-assets:
+    get:
+      tags: [Administration]
+      summary: List private download assets
+      operationId: listAdminDownloadAssets
+      security: [{ SessionCookie: [] }]
+      responses: { "200": { description: Assets and eligible targets }, "403": { $ref: "#/components/responses/Forbidden" } }
+    post:
+      tags: [Administration]
+      summary: Upload a private download asset
+      operationId: uploadAdminDownloadAsset
+      security: [{ SessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [productId, componentId, file]
+              properties:
+                productId: { type: string, format: uuid }
+                componentId: { type: string, format: uuid }
+                file: { type: string, format: binary }
+      responses: { "201": { description: Asset created }, "403": { $ref: "#/components/responses/Forbidden" } }
+    patch:
+      tags: [Administration]
+      summary: Enable or disable a private download asset
+      operationId: updateAdminDownloadAsset
+      security: [{ SessionCookie: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [id, enabled], properties: { id: { type: string, format: uuid }, enabled: { type: boolean } } } } }
+      responses: { "200": { description: Asset updated }, "403": { $ref: "#/components/responses/Forbidden" } }
+  /api/v1/supplier/ping:
+    post:
+      tags: [Connection]
+      summary: Verify credentials and read the shared user balance
+      operationId: pingSupplier
+      responses:
+        "200":
+          description: Connection and balance information
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ping" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/supplier/categories:
+    get:
+      tags: [Catalog]
+      summary: List categories used by exported products
+      operationId: listSupplierCategories
+      responses:
+        "200":
+          description: Category list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Category" }
+  /api/v1/supplier/products:
+    get:
+      tags: [Catalog]
+      summary: List exported products
+      operationId: listSupplierProducts
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: updated_after
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Paginated product list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductPage" }
+  /api/v1/supplier/products/{productId}:
+    get:
+      tags: [Catalog]
+      summary: Get an exported product
+      operationId: getSupplierProduct
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [product]
+                properties:
+                  product: { $ref: "#/components/schemas/Product" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/supplier/orders:
+    post:
+      tags: [Orders]
+      summary: Purchase stock using the authenticated user's balance
+      operationId: createSupplierOrder
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/OrderAccess' }
+            schema: { $ref: "#/components/schemas/CreateOrder" }
       responses:
-        '200': { description: Failed automation job queued for an idempotent retry }
-        '401': { $ref: '#/components/responses/Problem' }
-        '409': { $ref: '#/components/responses/Problem' }
+        "200":
+          description: Accepted or idempotently replayed order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedOrder" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/supplier/orders/{orderId}:
+    get:
+      tags: [Orders]
+      summary: Reconcile an order and retrieve delivered stock
+      operationId: getSupplierOrder
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Current order state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/supplier/orders/{orderId}/cancel:
+    post:
+      tags: [Orders]
+      summary: Cancel an unprocessed order and restore stock and balance
+      operationId: cancelSupplierOrder
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Cancelled order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedOrder" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/supplier/payment-channels:
+    get:
+      tags: [Top-ups]
+      summary: List payment channels available for wallet top-ups
+      operationId: listTopupPaymentChannels
+      responses:
+        "200":
+          description: Payment channels
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/PaymentChannel" }
+  /api/v1/supplier/topups:
+    post:
+      tags: [Top-ups]
+      summary: Create a hosted wallet top-up checkout
+      operationId: createSupplierTopup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTopup" }
+      responses:
+        "200":
+          description: Hosted payment attempt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentAttempt" }
+  /api/v1/supplier/topups/{topupId}:
+    get:
+      tags: [Top-ups]
+      summary: Get a wallet top-up
+      operationId: getSupplierTopup
+      parameters:
+        - name: topupId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Top-up state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Topup" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+      description: Better Auth browser session. The deployed cookie name may include a secure prefix.
+    WebSupportCookie:
+      type: apiKey
+      in: cookie
+      name: gmshop_web_support
+    AutomationSignature:
+      type: apiKey
+      in: header
+      name: X-GMShop-Signature
+    TelegramSecret:
+      type: apiKey
+      in: header
+      name: X-Telegram-Bot-Api-Secret-Token
+    ApiKey:
+      type: apiKey
+      in: header
+      name: GMShop-Edge-Api-Key
+    Timestamp:
+      type: apiKey
+      in: header
+      name: GMShop-Edge-Timestamp
+      description: Ten-digit Unix timestamp; accepted within 60 seconds.
+    Nonce:
+      type: apiKey
+      in: header
+      name: GMShop-Edge-Nonce
+      description: Unique 16-100 character request nonce.
+    Signature:
+      type: apiKey
+      in: header
+      name: GMShop-Edge-Signature
+      description: Lowercase hexadecimal HMAC-SHA256 signature.
   parameters:
     AuthPath:
-      name: path
+      name: authPath
       in: path
       required: true
       schema: { type: string }
+      description: Better Auth subpath, including nested provider-specific segments.
     ProductId:
       name: productId
-      in: path
-      required: true
-      schema: { type: string, format: uuid }
-    JobId:
-      name: jobId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -264,155 +509,230 @@ components:
       name: orderNumber
       in: path
       required: true
-      schema: { type: string, pattern: '^[A-Za-z0-9_-]{8,80}$' }
-    GMShopSignature:
-      name: X-GMShop-Signature
-      in: header
-      required: true
-      description: Timestamped HMAC header in `t={unix-ms},v1={hex}` format.
       schema: { type: string }
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ChannelId:
+      name: channelId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BinaryAsset:
+      description: Binary asset with validated content type, cache, and range headers where supported
+      content:
+        application/octet-stream:
+          schema: { type: string, format: binary }
+    BadRequest:
+      description: Invalid or malformed request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Valid session without ownership or permission
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Invalid, expired, revoked, or incorrectly signed credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found or not owned by this API user
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Balance, inventory, idempotency, or state conflict
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
   schemas:
-    DeliveryComponentPolicy:
+    JsonWebKey:
       type: object
-      required: [id, type, renewalMode, emailMode, showOnOrderPage, allowResend, version, enabled]
+      required: [kty, n, e]
       properties:
-        id: { type: string, format: uuid }
-        type: { type: string, enum: [stock, download, automation] }
-        durationMs: { type: [integer, 'null'], minimum: 1 }
-        usageLimit: { type: [integer, 'null'], minimum: 1 }
-        accessLimit: { type: [integer, 'null'], minimum: 1 }
-        renewalMode: { type: string, enum: [stack, disabled] }
-        emailMode: { type: string, enum: [none, link, content] }
-        showOnOrderPage: { type: boolean }
-        allowResend: { type: boolean }
-        version: { type: integer, minimum: 1 }
-        enabled: { type: boolean }
-    ProductSellableItem:
+        kty: { type: string, const: RSA }
+        n: { type: string, minLength: 300, maxLength: 800 }
+        e: { type: string, minLength: 1, maxLength: 12 }
+        alg: { type: string, const: RSA-OAEP-256 }
+        key_ops: { type: array, maxItems: 4, items: { type: string } }
+        ext: { type: boolean }
+    WebSupportConversation:
       type: object
-      required: [name, priceMinor, currency, currencyDecimals, minimumQuantity, maximumQuantity, deliveryComponentId, enabled]
+      required: [visitorId, publicKeyJwk, diagnostics]
       properties:
-        id: { type: string, format: uuid }
-        name: { type: string, minLength: 1, maxLength: 120 }
-        listPriceMinor: { type: [string, 'null'], pattern: '^\\d+$' }
-        priceMinor: { type: string, pattern: '^\\d+$' }
-        costMinor: { type: [string, 'null'], pattern: '^\\d+$' }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
-        currencyDecimals: { type: integer, minimum: 0, maximum: 8 }
-        minimumQuantity: { type: integer, minimum: 1 }
-        maximumQuantity: { type: integer, minimum: 1 }
-        maximumPerCustomer: { type: [integer, 'null'], minimum: 1 }
-        deliveryComponentId: { type: string, format: uuid }
-        enabled: { type: boolean }
-    DownloadAssetSnapshot:
+        email: { type: string, format: email, maxLength: 254 }
+        visitorId: { type: string, format: uuid }
+        publicKeyJwk: { $ref: "#/components/schemas/JsonWebKey" }
+        fingerprint:
+          type: object
+          required: [visitorId, version]
+          properties:
+            visitorId: { type: string, pattern: "^[a-fA-F0-9]{16,128}$" }
+            version: { type: string, pattern: "^\\d+(?:\\.\\d+){0,2}$", maxLength: 20 }
+        diagnostics:
+          type: object
+          required: [locale, timeZone]
+          properties:
+            locale: { type: string, enum: [en-US, zh-CN] }
+            timeZone: { type: string, minLength: 1, maxLength: 64 }
+    WebSupportMessage:
       type: object
-      required: [id, assetVersion, fileName, contentType, sizeBytes, checksumSha256]
+      required: [clientMessageId, text]
       properties:
-        id: { type: string, format: uuid }
-        assetVersion: { type: integer, minimum: 1 }
-        fileName: { type: string, minLength: 1, maxLength: 255 }
-        contentType: { type: string, minLength: 1, maxLength: 255 }
-        sizeBytes: { type: integer, minimum: 1 }
-        checksumSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
-    Problem:
+        clientMessageId: { type: string, format: uuid }
+        text: { type: string, minLength: 1, maxLength: 3500 }
+    WebSupportAck:
       type: object
-      required: [code]
+      required: [ids]
       properties:
-        code: { type: string }
-        message: { type: string }
+        ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+    CreateAutomationJob:
+      type: object
+      description: Input values are validated against the immutable method/input definition snapshot on the order.
+      required: [entitlementId, methodId, idempotencyKey]
+      properties:
+        entitlementId: { type: string, format: uuid }
+        methodId: { type: string, format: uuid }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
+        notificationChannel: { type: string, enum: [none, email], default: none }
+        authorizationValues: { type: object, additionalProperties: true }
+        automationValues: { type: object, additionalProperties: true }
     AutomationCallback:
       type: object
       required: [jobId, status]
       properties:
         jobId: { type: string, format: uuid }
+        status: { type: string, enum: [running, succeeded, failed] }
         providerJobId: { type: string, maxLength: 255 }
         runUrl: { type: string, format: uri, maxLength: 2000 }
-        status: { type: string, enum: [running, succeeded, failed] }
         failureCode: { type: string, maxLength: 120 }
-    EntitlementPolicy:
+    MoneyMinor:
+      type: string
+      pattern: "^(0|[1-9][0-9]*)$"
+      description: Decimal integer string in the smallest currency unit.
+    Error:
       type: object
-      required: [durationMs, usageLimit, accessLimit, activationTrigger, exhaustionRule, renewalMode]
+      required: [ok, error_code]
       properties:
-        durationMs: { type: [integer, 'null'], minimum: 1000 }
-        usageLimit: { type: [integer, 'null'], minimum: 1 }
-        accessLimit: { type: [integer, 'null'], minimum: 1 }
-        activationTrigger: { type: string, const: delivery_completed }
-        exhaustionRule: { type: string, const: first_limit_reached }
-        renewalMode: { type: string, enum: [stack, disabled] }
-    DeliveryPresentationPolicy:
+        ok: { type: boolean, const: false }
+        error_code: { type: string }
+    Ping:
       type: object
-      required: [showOnOrderPage, accountLibraryEnabled, emailMode, allowResend]
+      required: [ok, site_name, balance_minor, currency]
       properties:
-        showOnOrderPage: { type: boolean }
-        accountLibraryEnabled: { type: boolean, const: true }
-        emailMode: { type: string, enum: [none, link, content] }
-        allowResend: { type: boolean }
-      description: >-
-        Content email is additionally restricted to permanent, unlimited-access
-        stock text. Download files and automation artifacts always use claim links.
-    PaymentQuoteSnapshot:
+        ok: { type: boolean, const: true }
+        site_name: { type: string }
+        balance_minor: { $ref: "#/components/schemas/MoneyMinor" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+    Category:
       type: object
-      required: [amountMinor, currency, currencyDecimals, rate, direction, source, adjustmentBps, observedAt]
+      required: [id, name]
       properties:
-        amountMinor: { type: string, pattern: '^[0-9]+$' }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
-        currencyDecimals: { type: integer, minimum: 0, maximum: 20 }
-        rateId: { type: [string, 'null'], format: uuid }
-        rate: { type: string, pattern: '^(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)$' }
-        direction: { type: string, enum: [parity, multiply, divide] }
-        source: { type: string }
-        adjustmentBps: { type: integer, minimum: -9999, maximum: 100000 }
-        observedAt: { type: integer, description: Unix time in milliseconds }
-      description: Immutable store-owned quote saved on each payment attempt.
-    OrderAccess:
+        id: { type: string }
+        name: { type: string }
+    Sku:
       type: object
+      required: [id, name, cost_minor, stock_quantity, active]
       properties:
-        lookupToken: { type: string, pattern: '^[0-9a-fA-F]{48}$' }
-      description: A customer session may replace the guest lookup token.
-    CheckoutItem:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        cost_minor: { $ref: "#/components/schemas/MoneyMinor" }
+        stock_quantity: { type: integer, minimum: 0 }
+        active: { type: boolean }
+    Product:
       type: object
-      required: [sellableItemId, quantity, inputValues]
+      required: [id, name, description, image_urls, category_names, active, updated_at, skus]
       properties:
-        sellableItemId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        image_urls: { type: array, items: { type: string, format: uri } }
+        category_names: { type: array, items: { type: string } }
+        active: { type: boolean }
+        updated_at: { type: string, format: date-time }
+        skus: { type: array, items: { $ref: "#/components/schemas/Sku" } }
+    ProductPage:
+      type: object
+      required: [total, items]
+      properties:
+        total: { type: integer, minimum: 0 }
+        items: { type: array, items: { $ref: "#/components/schemas/Product" } }
+    CreateOrder:
+      type: object
+      required: [sku_id, quantity, downstream_order_no]
+      properties:
+        sku_id: { type: string, format: uuid }
         quantity: { type: integer, minimum: 1, maximum: 1000 }
-        inputValues: { type: object, additionalProperties: true }
-        renewedFromEntitlementId: { type: [string, 'null'], format: uuid }
-    MultiItemCheckout:
+        downstream_order_no: { type: string, minLength: 1, maxLength: 200 }
+        trace_id: { type: string, maxLength: 200 }
+        callback_url: { type: [string, "null"], format: uri }
+    CreatedOrder:
       type: object
-      required: [items, email, idempotencyKey, termsAccepted]
+      required: [ok, order_id, status]
       properties:
-        items:
-          type: array
-          minItems: 1
-          maxItems: 50
-          items: { $ref: '#/components/schemas/CheckoutItem' }
-        email: { type: string, format: email }
-        couponCode: { type: string, maxLength: 64 }
-        customerNote: { type: string, maxLength: 1000 }
-        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
-        commerceSessionId: { type: string, format: uuid }
-        paymentChannelId: { type: [string, 'null'], format: uuid }
-        paymentCurrency: { type: [string, 'null'], pattern: '^[A-Z]{3}$' }
-        termsAccepted: { type: boolean, const: true }
-    CartVersion:
+        ok: { type: boolean, const: true }
+        order_id: { type: string, format: uuid }
+        status: { type: string, enum: [processing, cancelled] }
+    Order:
       type: object
-      required: [expectedVersion]
+      required: [order_id, status]
       properties:
-        expectedVersion: { type: integer, minimum: 1 }
-  responses:
-    Problem:
-      description: Structured, redacted error
-      content:
-        application/json: { schema: { $ref: '#/components/schemas/Problem' } }
-    Image:
-      description: Controlled public image response
-      headers:
-        X-Content-Type-Options: { schema: { type: string, const: nosniff } }
-      content:
-        image/png: { schema: { type: string, format: binary } }
-        image/jpeg: { schema: { type: string, format: binary } }
-        image/webp: { schema: { type: string, format: binary } }
-        image/avif: { schema: { type: string, format: binary } }
-    Binary:
-      description: Authorized private object; Content-Disposition supplies a safe filename
-      content:
-        application/octet-stream: { schema: { type: string, format: binary } }
+        order_id: { type: string, format: uuid }
+        status: { type: string, enum: [processing, supplied, cancelled, failed, refunded] }
+        cards: { type: array, items: { type: string } }
+    PaymentChannel:
+      type: object
+      required: [id, name, provider, currency]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        provider: { type: string }
+        currency: { type: string }
+    CreateTopup:
+      type: object
+      required: [amount_minor, channel_id, request_no]
+      properties:
+        amount_minor: { $ref: "#/components/schemas/MoneyMinor" }
+        channel_id: { type: string, format: uuid }
+        request_no: { type: string, minLength: 1, maxLength: 160 }
+        payment_currency: { type: string, pattern: "^[A-Z]{3}$" }
+    PaymentAttempt:
+      type: object
+      required: [topupId, id, status]
+      properties:
+        topupId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, succeeded, failed] }
+        providerPaymentId: { type: [string, "null"] }
+        checkoutUrl: { type: [string, "null"], format: uri }
+        expiresAt: { type: [integer, "null"], description: Unix milliseconds }
+    Topup:
+      type: object
+      required: [id, amount_minor, currency, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        amount_minor: { $ref: "#/components/schemas/MoneyMinor" }
+        currency: { type: string }
+        status: { type: string, enum: [pending, paid, failed, expired, refunded] }
+        paid_at: { type: [integer, "null"] }
+        refunded_at: { type: [integer, "null"] }
+        created_at: { type: integer }

@@ -7,7 +7,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Password } from "#/components/pro/base/fields/input";
-import { formBooleanValue, ProSchemaForm } from "#/components/pro/form";
+import {
+	formBooleanValue,
+	ModalForm,
+	ProSchemaForm,
+} from "#/components/pro/form";
 import { AuthAnimationProvider } from "#/features/auth/components/auth-animation-context";
 import { UserAuthForm } from "#/features/auth/components/user-auth-form";
 import { m } from "#/paraglide/messages";
@@ -187,6 +191,38 @@ describe("application form system", () => {
 
 		expect(container.textContent).toContain("SMTP host");
 		expect(container.textContent).not.toContain("Mailgun domain");
+		await act(async () => root.unmount());
+	});
+
+	it("renders overlay validation errors on fields without calling onFinish", async () => {
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const onFinish = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<ModalForm
+					open
+					title="Payment"
+					schema={[{ name: "secret", label: "Secret" }]}
+					validate={() => ({ secret: ["Use at least 8 characters"] })}
+					onFinish={onFinish}
+				/>,
+			);
+		});
+		await act(async () => {
+			document
+				.querySelector<HTMLFormElement>('[data-slot="pro-modal-content"] form')
+				?.requestSubmit();
+			await Promise.resolve();
+		});
+
+		const input = document.querySelector<HTMLInputElement>("#secret");
+		expect(onFinish).not.toHaveBeenCalled();
+		expect(input?.getAttribute("aria-invalid")).toBe("true");
+		expect(document.body.textContent).toContain("Use at least 8 characters");
+
 		await act(async () => root.unmount());
 	});
 });

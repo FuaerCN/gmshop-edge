@@ -58,6 +58,7 @@ describe("GMShop admin navigation", () => {
 				"/admin/suppliers/accounts",
 				"/admin/suppliers/products",
 				"/admin/suppliers/orders",
+				"/admin/settings/supplier-api",
 			],
 		],
 		[systemPermission("orders", "read"), ["/admin/orders"]],

@@ -1,7 +1,6 @@
 import { CheckCircle2, Cloud, Database, LockKeyhole } from "lucide-react";
 import { AppTitle } from "#/layouts/components/app-title";
-import { LocaleSwitch } from "#/layouts/components/locale-switch";
-import { ThemeSwitch } from "#/layouts/components/theme-switch";
+import { QuickSettings } from "#/layouts/components/quick-settings";
 import { m } from "#/paraglide/messages";
 
 export function InstallLayout({ children }: { children: React.ReactNode }) {
@@ -15,10 +14,7 @@ export function InstallLayout({ children }: { children: React.ReactNode }) {
 			<div className="relative mx-auto max-w-3xl">
 				<header className="mb-7 flex items-center justify-between">
 					<AppTitle description />
-					<div className="flex items-center gap-1">
-						<LocaleSwitch />
-						<ThemeSwitch />
-					</div>
+					<QuickSettings />
 				</header>
 				<section className="overflow-hidden rounded-3xl border bg-card/80 shadow-2xl backdrop-blur-xl">
 					<div className="border-b p-7 md:p-9">

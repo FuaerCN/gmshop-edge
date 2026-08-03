@@ -6,7 +6,11 @@ export const listedUsersCte = `WITH listed_users AS (
 	 u.name, u.customer_note AS note,
 	 CASE WHEN u.enabled = 1 THEN 'active' ELSE 'disabled' END AS status,
 	 u.last_ordered_at, u.created_at, u.updated_at, u.enabled AS user_enabled,
-	 u.email_verified,
+	 u.email_verified, u.balance_minor,
+	 COALESCE((SELECT json_extract(value, '$') FROM system_settings
+	  WHERE key = 'commerce.default_currency'), 'USD') AS balance_currency,
+	 COALESCE((SELECT CAST(json_extract(value, '$') AS INTEGER) FROM system_settings
+	  WHERE key = 'commerce.currency_decimals'), 2) AS balance_currency_decimals,
 	 COALESCE((
 	  SELECT json_group_array(role_name) FROM (
 	   SELECT r.name AS role_name FROM json_each(u.role_ids) assigned
@@ -31,6 +35,9 @@ export type ListedUserRow = {
 	updated_at: number;
 	user_enabled: number;
 	email_verified: number;
+	balance_minor: string;
+	balance_currency: string;
+	balance_currency_decimals: number;
 	role_names: string;
 	order_count: number;
 	entitlement_count: number;
@@ -146,6 +153,11 @@ export function presentListedUser(row: ListedUserRow, includeCommerce = true) {
 		status: row.status,
 		userEnabled: Boolean(row.user_enabled),
 		emailVerified: Boolean(row.email_verified),
+		balanceMinor: includeCommerce ? row.balance_minor : "0",
+		balanceCurrency: includeCommerce ? row.balance_currency : "USD",
+		balanceCurrencyDecimals: includeCommerce
+			? Number(row.balance_currency_decimals)
+			: 2,
 		roles: roleNamesSchema.parse(JSON.parse(row.role_names)),
 		loginMethods: loginMethodsSchema.parse(JSON.parse(row.login_methods_json)),
 		orderCount: includeCommerce ? Number(row.order_count) : 0,

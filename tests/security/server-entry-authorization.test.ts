@@ -23,6 +23,7 @@ const adminServerModules = [
 	"src/features/settings/server/admin.ts",
 	"src/features/shop-orders/server/admin.ts",
 	"src/features/shop-payments/server/admin.ts",
+	"src/features/supplier-api/server/admin.ts",
 	"src/features/suppliers/server/admin.ts",
 	"src/features/suppliers/server/catalog-admin.ts",
 	"src/features/suppliers/server/orders-admin.ts",
@@ -40,6 +41,8 @@ const reviewedPublicServerModules = [
 	"src/features/storefront/server/catalog.ts",
 	"src/features/storefront/server/cart.ts",
 	"src/features/storefront/server/functions.ts",
+	"src/features/supplier-api/server/keys.ts",
+	"src/features/wallet/server/functions.ts",
 ] as const;
 
 const reviewedInputlessPostFunctions = new Set([

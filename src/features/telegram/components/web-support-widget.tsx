@@ -247,7 +247,7 @@ export function WebSupportWidget() {
 					role="dialog"
 					aria-modal="true"
 					aria-labelledby="web-support-title"
-					className="fixed inset-x-0 bottom-0 z-50 flex max-h-[min(78dvh,42rem)] flex-col rounded-t-2xl border bg-background shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-4 sm:h-[38rem] sm:w-[24rem] sm:rounded-2xl"
+					className="fixed inset-x-0 bottom-0 z-50 flex h-[min(78dvh,42rem)] flex-col rounded-t-2xl border bg-background shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-4 sm:h-[38rem] sm:w-[24rem] sm:rounded-2xl"
 				>
 					<header className="flex items-center justify-between border-b p-4">
 						<h2 id="web-support-title" className="font-semibold">

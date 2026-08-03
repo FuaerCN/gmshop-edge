@@ -29,6 +29,13 @@
       "when": 1785673934610,
       "tag": "0003_product_tag_names",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785769092661,
+      "tag": "0004_plain_prima",
+      "breakpoints": true
     }
   ]
 }

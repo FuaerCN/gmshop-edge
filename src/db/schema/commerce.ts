@@ -261,7 +261,9 @@ export const supplierAccounts = sqliteTable(
 	"supplier_accounts",
 	{
 		id: text("id").primaryKey(),
-		provider: text("provider", { enum: ["acg", "dujiao_next"] }).notNull(),
+		provider: text("provider", {
+			enum: ["acg", "dujiao_next", "gmshop_edge"],
+		}).notNull(),
 		baseUrl: text("base_url").notNull(),
 		normalizedApiOrigin: text("normalized_api_origin").notNull(),
 		protocolVersion: text("protocol_version").notNull(),
@@ -314,7 +316,7 @@ export const supplierAccounts = sqliteTable(
 		),
 		check(
 			"supplier_accounts_provider_check",
-			sql`${table.provider} IN ('acg', 'dujiao_next')`,
+			sql`${table.provider} IN ('acg', 'dujiao_next', 'gmshop_edge')`,
 		),
 		check(
 			"supplier_accounts_currency_decimals_check",
@@ -354,7 +356,9 @@ export const supplierBindings = sqliteTable(
 		sellableItemId: text("sellable_item_id")
 			.notNull()
 			.references(() => productSellableItems.id),
-		provider: text("provider", { enum: ["acg", "dujiao_next"] }).notNull(),
+		provider: text("provider", {
+			enum: ["acg", "dujiao_next", "gmshop_edge"],
+		}).notNull(),
 		normalizedApiOrigin: text("normalized_api_origin").notNull(),
 		protocolVersion: text("protocol_version").notNull(),
 		upstreamProductId: text("upstream_product_id").notNull(),
@@ -398,7 +402,7 @@ export const supplierBindings = sqliteTable(
 		),
 		check(
 			"supplier_bindings_provider_check",
-			sql`${table.provider} IN ('acg', 'dujiao_next')`,
+			sql`${table.provider} IN ('acg', 'dujiao_next', 'gmshop_edge')`,
 		),
 		check(
 			"supplier_bindings_reference_cost_check",
@@ -898,6 +902,84 @@ export const orderItemDownloadAssets = sqliteTable(
 	],
 );
 
+export const walletEntries = sqliteTable(
+	"wallet_entries",
+	{
+		id: text("id").primaryKey(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id),
+		direction: text("direction", { enum: ["credit", "debit"] }).notNull(),
+		amountMinor: text("amount_minor").notNull(),
+		balanceBeforeMinor: text("balance_before_minor").notNull(),
+		balanceAfterMinor: text("balance_after_minor").notNull(),
+		currency: text("currency").notNull(),
+		sourceType: text("source_type", {
+			enum: ["topup", "adjustment", "shop_order", "supplier_order", "refund"],
+		}).notNull(),
+		sourceId: text("source_id").notNull(),
+		idempotencyKey: text("idempotency_key").notNull(),
+		reason: text("reason"),
+		actorUserId: text("actor_user_id").references(() => users.id),
+		createdAt: integer("created_at", { mode: "timestamp_ms" })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+	},
+	(table) => [
+		uniqueIndex("wallet_entries_idempotency_uidx").on(table.idempotencyKey),
+		index("wallet_entries_user_created_idx").on(
+			table.userId,
+			table.createdAt,
+			table.id,
+		),
+		check("wallet_entries_amount_check", moneyCheck(table.amountMinor)),
+		check("wallet_entries_before_check", moneyCheck(table.balanceBeforeMinor)),
+		check("wallet_entries_after_check", moneyCheck(table.balanceAfterMinor)),
+		check(
+			"wallet_entries_direction_check",
+			sql`${table.direction} IN ('credit', 'debit')`,
+		),
+	],
+);
+
+export const walletTopups = sqliteTable(
+	"wallet_topups",
+	{
+		id: text("id").primaryKey(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id),
+		amountMinor: text("amount_minor").notNull(),
+		currency: text("currency").notNull(),
+		currencyDecimals: integer("currency_decimals").notNull(),
+		status: text("status", {
+			enum: ["pending", "paid", "failed", "expired", "refunded"],
+		})
+			.notNull()
+			.default("pending"),
+		idempotencyKey: text("idempotency_key").notNull(),
+		paidAt: integer("paid_at", { mode: "timestamp_ms" }),
+		refundedAt: integer("refunded_at", { mode: "timestamp_ms" }),
+		...timestamps,
+	},
+	(table) => [
+		uniqueIndex("wallet_topups_user_idempotency_uidx").on(
+			table.userId,
+			table.idempotencyKey,
+		),
+		index("wallet_topups_user_created_idx").on(
+			table.userId,
+			table.createdAt,
+			table.id,
+		),
+		check("wallet_topups_amount_check", moneyCheck(table.amountMinor)),
+		check(
+			"wallet_topups_currency_decimals_check",
+			sql`${table.currencyDecimals} BETWEEN 0 AND 8`,
+		),
+	],
+);
+
 export const paymentChannels = sqliteTable(
 	"payment_channels",
 	{
@@ -988,9 +1070,8 @@ export const paymentAttempts = sqliteTable(
 	"payment_attempts",
 	{
 		id: text("id").primaryKey(),
-		orderId: text("order_id")
-			.notNull()
-			.references(() => shopOrders.id),
+		orderId: text("order_id").references(() => shopOrders.id),
+		walletTopupId: text("wallet_topup_id").references(() => walletTopups.id),
 		channelId: text("channel_id")
 			.notNull()
 			.references(() => paymentChannels.id),
@@ -1051,12 +1132,22 @@ export const paymentAttempts = sqliteTable(
 			table.createdAt,
 			table.id,
 		),
+		index("payment_attempts_topup_created_idx").on(
+			table.walletTopupId,
+			table.createdAt,
+			table.id,
+		),
 		index("payment_attempts_status_created_idx").on(
 			table.status,
 			table.createdAt,
 			table.id,
 		),
 		check("payment_attempts_amount_check", moneyCheck(table.amountMinor)),
+		check(
+			"payment_attempts_subject_check",
+			sql`(${table.orderId} IS NOT NULL AND ${table.walletTopupId} IS NULL) OR
+				(${table.orderId} IS NULL AND ${table.walletTopupId} IS NOT NULL)`,
+		),
 		check(
 			"payment_attempts_currency_decimals_check",
 			sql`${table.currencyDecimals} BETWEEN 0 AND 8`,
@@ -1504,6 +1595,111 @@ export const supplierOrders = sqliteTable(
 			"supplier_orders_cost_shape_check",
 			sql`(${table.quotedUnitCostMinor} IS NULL AND ${table.totalCostMinor} IS NULL) OR
 				(${table.quotedUnitCostMinor} IS NOT NULL AND ${table.totalCostMinor} IS NOT NULL)`,
+		),
+	],
+);
+
+export const supplierApiKeys = sqliteTable(
+	"supplier_api_keys",
+	{
+		id: text("id").primaryKey(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		keyId: text("key_id").notNull(),
+		secretEncrypted: text("secret_encrypted").notNull(),
+		secretRevision: integer("secret_revision").notNull().default(1),
+		allowedCallbackOrigin: text("allowed_callback_origin"),
+		lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+		...timestamps,
+	},
+	(table) => [
+		uniqueIndex("supplier_api_keys_key_id_uidx").on(table.keyId),
+		uniqueIndex("supplier_api_keys_user_name_uidx").on(
+			table.userId,
+			table.name,
+		),
+		index("supplier_api_keys_user_active_idx").on(
+			table.userId,
+			table.revokedAt,
+			table.id,
+		),
+		check("supplier_api_keys_revision_check", sql`${table.secretRevision} > 0`),
+	],
+);
+
+export const supplierExportListings = sqliteTable(
+	"supplier_export_listings",
+	{
+		id: text("id").primaryKey(),
+		sellableItemId: text("sellable_item_id")
+			.notNull()
+			.references(() => productSellableItems.id, { onDelete: "cascade" }),
+		priceMinor: text("price_minor").notNull(),
+		currency: text("currency").notNull(),
+		currencyDecimals: integer("currency_decimals").notNull(),
+		enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+		...timestamps,
+	},
+	(table) => [
+		uniqueIndex("supplier_export_listings_item_uidx").on(table.sellableItemId),
+		index("supplier_export_listings_enabled_updated_idx").on(
+			table.enabled,
+			table.updatedAt,
+			table.id,
+		),
+		check("supplier_export_listings_price_check", moneyCheck(table.priceMinor)),
+		check(
+			"supplier_export_listings_decimals_check",
+			sql`${table.currencyDecimals} BETWEEN 0 AND 8`,
+		),
+	],
+);
+
+export const supplierApiOrders = sqliteTable(
+	"supplier_api_orders",
+	{
+		id: text("id").primaryKey(),
+		shopOrderId: text("shop_order_id")
+			.notNull()
+			.references(() => shopOrders.id),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id),
+		apiKeyId: text("api_key_id")
+			.notNull()
+			.references(() => supplierApiKeys.id),
+		downstreamOrderNo: text("downstream_order_no").notNull(),
+		requestDigest: text("request_digest").notNull(),
+		callbackUrl: text("callback_url"),
+		state: text("state", {
+			enum: ["processing", "supplied", "cancelled", "failed", "refunded"],
+		})
+			.notNull()
+			.default("processing"),
+		callbackAttemptCount: integer("callback_attempt_count")
+			.notNull()
+			.default(0),
+		nextCallbackAt: integer("next_callback_at", { mode: "timestamp_ms" }),
+		lastCallbackError: text("last_callback_error"),
+		...timestamps,
+	},
+	(table) => [
+		uniqueIndex("supplier_api_orders_shop_order_uidx").on(table.shopOrderId),
+		uniqueIndex("supplier_api_orders_user_request_uidx").on(
+			table.userId,
+			table.downstreamOrderNo,
+		),
+		index("supplier_api_orders_callback_idx").on(
+			table.state,
+			table.nextCallbackAt,
+			table.id,
+		),
+		check(
+			"supplier_api_orders_callback_attempt_check",
+			sql`${table.callbackAttemptCount} >= 0`,
 		),
 	],
 );

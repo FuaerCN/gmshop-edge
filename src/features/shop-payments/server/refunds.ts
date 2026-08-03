@@ -49,12 +49,7 @@ export async function requestShopRefund(
 		)
 		.bind(input.orderId)
 		.first<RefundableOrder>();
-	if (!order)
-		throw new DomainError(
-			"refund_payment_missing",
-			409,
-			"A completed payment is required",
-		);
+	if (!order) return requestWalletShopRefund(db, input, context);
 	if (
 		!(["paid", "fulfilling", "completed", "failed"] as string[]).includes(
 			order.status,
@@ -195,6 +190,204 @@ export async function requestShopRefund(
 		id,
 		status: manual ? ("processing" as const) : ("pending" as const),
 		manualActionRequired: manual,
+		duplicate: false,
+	};
+}
+
+async function requestWalletShopRefund(
+	db: D1Database,
+	input: z.output<typeof refundRequestSchema>,
+	context: { actorUserId: string; request: Request },
+) {
+	const order = await db
+		.prepare(
+			`SELECT orders.id, orders.status, orders.version, orders.currency,
+			 orders.currency_decimals, orders.paid_minor, orders.user_id,
+			 users.balance_minor, users.balance_version
+			 FROM shop_orders orders JOIN users ON users.id = orders.user_id
+			 WHERE orders.id = ? AND EXISTS (
+			  SELECT 1 FROM wallet_entries entry
+			  WHERE entry.source_type = 'shop_order' AND entry.source_id = orders.id
+			   AND entry.direction = 'debit'
+			 ) LIMIT 1`,
+		)
+		.bind(input.orderId)
+		.first<{
+			id: string;
+			status: ShopOrderStatus;
+			version: number;
+			currency: string;
+			currency_decimals: number;
+			paid_minor: string;
+			user_id: string;
+			balance_minor: string;
+			balance_version: number;
+		}>();
+	if (!order)
+		throw new DomainError(
+			"refund_payment_missing",
+			409,
+			"A completed payment is required",
+		);
+	if (
+		!(["paid", "fulfilling", "completed", "failed"] as string[]).includes(
+			order.status,
+		)
+	)
+		throw new DomainError(
+			"refund_order_unavailable",
+			409,
+			"Order cannot be refunded",
+		);
+	const reserved = await db
+		.prepare(
+			"SELECT amount_minor FROM refunds WHERE order_id = ? AND status IN ('pending', 'processing', 'succeeded')",
+		)
+		.bind(order.id)
+		.all<{ amount_minor: string }>();
+	const available =
+		BigInt(order.paid_minor) -
+		reserved.results.reduce(
+			(total, row) => total + BigInt(row.amount_minor),
+			0n,
+		);
+	const amount = BigInt(input.amountMinor);
+	if (amount > available)
+		throw new DomainError(
+			"refund_amount_exceeded",
+			409,
+			"Refund amount exceeds the refundable balance",
+		);
+	const balanceBefore = BigInt(order.balance_minor);
+	const balanceAfter = balanceBefore + amount;
+	if (balanceAfter > 9_223_372_036_854_775_807n)
+		throw new DomainError(
+			"wallet_balance_limit",
+			409,
+			"Balance limit exceeded",
+		);
+	const id = crypto.randomUUID();
+	const now = Date.now();
+	const balanceVersion = order.balance_version + 1;
+	const orderVersion = order.version + 1;
+	const orderStatus: ShopOrderStatus =
+		amount === available ? "refunded" : order.status;
+	const walletKey = `wallet-refund:${id}`;
+	const statements: D1PreparedStatement[] = [
+		db
+			.prepare(`UPDATE users SET balance_minor = ?, balance_version = ?, updated_at = ?
+		 WHERE id = ? AND balance_version = ? AND EXISTS (
+		  SELECT 1 FROM shop_orders WHERE id = ? AND status = ? AND version = ?
+		 )`)
+			.bind(
+				balanceAfter.toString(),
+				balanceVersion,
+				now,
+				order.user_id,
+				order.balance_version,
+				order.id,
+				order.status,
+				order.version,
+			),
+		db
+			.prepare(`INSERT INTO wallet_entries
+		 (id, user_id, direction, amount_minor, balance_before_minor, balance_after_minor,
+		  currency, source_type, source_id, idempotency_key, reason, actor_user_id, created_at)
+		 SELECT ?, id, 'credit', ?, ?, balance_minor, ?, 'refund', ?, ?, ?, ?, ?
+		 FROM users WHERE id = ? AND balance_version = ? AND balance_minor = ?`)
+			.bind(
+				crypto.randomUUID(),
+				input.amountMinor,
+				order.balance_minor,
+				order.currency,
+				order.id,
+				walletKey,
+				input.reason,
+				context.actorUserId,
+				now,
+				order.user_id,
+				balanceVersion,
+				balanceAfter.toString(),
+			),
+		db
+			.prepare(`UPDATE shop_orders SET status = ?, version = ?, refunded_at = CASE WHEN ? = 'refunded' THEN ? ELSE refunded_at END, updated_at = ?
+		 WHERE id = ? AND status = ? AND version = ? AND EXISTS (
+		  SELECT 1 FROM wallet_entries WHERE idempotency_key = ?
+		 )`)
+			.bind(
+				orderStatus,
+				orderVersion,
+				orderStatus,
+				now,
+				now,
+				order.id,
+				order.status,
+				order.version,
+				walletKey,
+			),
+		db
+			.prepare(`INSERT INTO refunds
+		 (id, order_id, payment_attempt_id, idempotency_key, amount_minor, currency,
+		  payment_amount_minor, payment_currency, payment_currency_decimals,
+		  order_status_before, status, reason, requested_by, completed_at, created_at, updated_at)
+		 SELECT ?, id, NULL, ?, ?, currency, ?, currency, currency_decimals,
+		  ?, 'succeeded', ?, ?, ?, ?, ? FROM shop_orders WHERE id = ? AND version = ?`)
+			.bind(
+				id,
+				input.idempotencyKey,
+				input.amountMinor,
+				input.amountMinor,
+				order.status,
+				input.reason,
+				context.actorUserId,
+				now,
+				now,
+				now,
+				order.id,
+				orderVersion,
+			),
+		db
+			.prepare(`INSERT INTO shop_order_events
+		 (id, order_id, event_type, visibility, from_status, to_status, order_version,
+		  note, actor_type, actor_user_id, created_at)
+		 SELECT ?, id, 'refund_succeeded', 'customer', ?, ?, version, ?, 'admin', ?, ?
+		 FROM shop_orders WHERE id = ? AND version = ?`)
+			.bind(
+				crypto.randomUUID(),
+				order.status,
+				orderStatus,
+				input.reason,
+				context.actorUserId,
+				now,
+				order.id,
+				orderVersion,
+			),
+		createAuditStatement(db, context.request, context.actorUserId, {
+			action: "refund.wallet_succeeded",
+			targetType: "refund",
+			targetId: id,
+			after: {
+				orderId: order.id,
+				amountMinor: input.amountMinor,
+				currency: order.currency,
+			},
+		}),
+	];
+	if (orderStatus === "refunded")
+		statements.push(
+			...(await refundEntitlementGrantStatements(db, order.id, now)),
+		);
+	const results = await db.batch(statements);
+	if (Number(results[0]?.meta.changes ?? 0) !== 1)
+		throw new DomainError(
+			"wallet_conflict",
+			409,
+			"Wallet changed; retry refund",
+		);
+	return {
+		id,
+		status: "succeeded" as const,
+		manualActionRequired: false,
 		duplicate: false,
 	};
 }

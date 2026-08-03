@@ -36,6 +36,10 @@ vi.mock("#/features/storefront/server/functions", () => ({
 	retryStorePaymentFn: vi.fn(),
 }));
 
+vi.mock("#/features/wallet/server/functions", () => ({
+	getWalletFn: vi.fn(),
+}));
+
 import { ProductGridSkeleton } from "#/features/home";
 import { CartLoadingSkeleton } from "#/features/storefront/pages/cart";
 import { CheckoutLoadingSkeleton } from "#/features/storefront/pages/checkout";

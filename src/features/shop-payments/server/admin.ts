@@ -480,18 +480,22 @@ async function channelCredential(
 			);
 		const schema =
 			data.provider === "gmpay" ? gmpayCredentialSchema : epayCredentialSchema;
-		value = {
-			...schema.parse(
-				JSON.parse(
-					await decryptSecret(
-						current,
-						runtime.commerceSecret,
-						"payment-credential",
-					),
+		const currentValue = schema.parse(
+			JSON.parse(
+				await decryptSecret(
+					current,
+					runtime.commerceSecret,
+					"payment-credential",
 				),
 			),
-			paymentMethod: data.epusdtPaymentMethod,
-		};
+		);
+		value =
+			data.provider === "epay"
+				? epayCredentialSchema.parse({
+						...currentValue,
+						paymentMethod: data.epusdtPaymentMethod,
+					})
+				: currentValue;
 	}
 	if (!value) {
 		if (current) return current;
@@ -568,12 +572,14 @@ function credentialValue(data: z.output<typeof paymentChannelInputSchema>) {
 	}
 	if (!data.epusdtBaseUrl && !data.epusdtPid && !data.epusdtSecretKey)
 		return null;
-	const schema =
-		data.provider === "gmpay" ? gmpayCredentialSchema : epayCredentialSchema;
-	return schema.parse({
+	const credential = {
 		baseUrl: data.epusdtBaseUrl,
 		pid: data.epusdtPid,
 		secretKey: data.epusdtSecretKey,
+	};
+	if (data.provider === "gmpay") return gmpayCredentialSchema.parse(credential);
+	return epayCredentialSchema.parse({
+		...credential,
 		paymentMethod: data.epusdtPaymentMethod,
 	});
 }
@@ -582,12 +588,10 @@ async function channelPaymentMethod(
 	row: ChannelRow,
 	commerceSecret: string | null,
 ) {
-	if (row.provider !== "gmpay" && row.provider !== "epay") return "";
+	if (row.provider !== "epay") return "";
 	if (!commerceSecret || !row.credential_encrypted) return "alipay";
 	try {
-		const schema =
-			row.provider === "gmpay" ? gmpayCredentialSchema : epayCredentialSchema;
-		return schema.parse(
+		return epayCredentialSchema.parse(
 			JSON.parse(
 				await decryptSecret(
 					row.credential_encrypted,

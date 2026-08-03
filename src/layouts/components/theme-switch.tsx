@@ -1,5 +1,5 @@
 import { Check, Monitor, Moon, Sun } from "lucide-react";
-import { type MouseEvent, useEffect } from "react";
+import { type MouseEvent, useCallback, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "#/components/ui/button";
 import {
@@ -11,64 +11,10 @@ import {
 import { useTheme } from "#/context/theme-provider";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
+import type { Theme } from "#/stores/preferences-store";
 
 export function ThemeSwitch() {
-	const { resolvedTheme, theme, setTheme } = useTheme();
-
-	/* Update theme-color meta tag
-	 * when theme is updated */
-	useEffect(() => {
-		const themeColor = resolvedTheme === "dark" ? "#020817" : "#fff";
-		const metaThemeColor = document.querySelector("meta[name='theme-color']");
-		if (metaThemeColor) {
-			metaThemeColor.setAttribute("content", themeColor);
-		}
-	}, [resolvedTheme]);
-
-	const handleThemeSelect = (
-		nextTheme: Parameters<typeof setTheme>[0],
-		event: MouseEvent,
-	) => {
-		if (nextTheme === theme) {
-			return;
-		}
-
-		const prefersReducedMotion = window.matchMedia(
-			"(prefers-reduced-motion: reduce)",
-		).matches;
-
-		if (prefersReducedMotion || !("startViewTransition" in document)) {
-			setTheme(nextTheme);
-			return;
-		}
-
-		const x = event.clientX || window.innerWidth / 2;
-		const y = event.clientY || window.innerHeight / 2;
-		const radius = Math.hypot(
-			Math.max(x, window.innerWidth - x),
-			Math.max(y, window.innerHeight - y),
-		);
-
-		const transition = document.startViewTransition(() => {
-			flushSync(() => setTheme(nextTheme));
-		});
-
-		transition.ready.then(() => {
-			document.documentElement.animate(
-				{
-					clipPath: [
-						`circle(0px at ${x}px ${y}px)`,
-						`circle(${radius}px at ${x}px ${y}px)`,
-					],
-				},
-				{
-					duration: 500,
-					easing: "cubic-bezier(.34,1.56,.64,1)",
-					pseudoElement: "::view-transition-new(root)",
-				} as KeyframeAnimationOptions,
-			);
-		});
-	};
+	const { theme, selectTheme } = useThemeSelection();
 
 	return (
 		<DropdownMenu modal={false}>
@@ -80,9 +26,7 @@ export function ThemeSwitch() {
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
-				<DropdownMenuItem
-					onClick={(event) => handleThemeSelect("light", event)}
-				>
+				<DropdownMenuItem onClick={(event) => selectTheme("light", event)}>
 					<Sun className="size-4" />
 					{m.theme_light()}{" "}
 					<Check
@@ -90,7 +34,7 @@ export function ThemeSwitch() {
 						size={14}
 					/>
 				</DropdownMenuItem>
-				<DropdownMenuItem onClick={(event) => handleThemeSelect("dark", event)}>
+				<DropdownMenuItem onClick={(event) => selectTheme("dark", event)}>
 					<Moon className="size-4" />
 					{m.theme_dark()}
 					<Check
@@ -98,7 +42,7 @@ export function ThemeSwitch() {
 						size={14}
 					/>
 				</DropdownMenuItem>
-				<DropdownMenuItem onClick={(event) => handleThemeSelect("auto", event)}>
+				<DropdownMenuItem onClick={(event) => selectTheme("auto", event)}>
 					<Monitor className="size-4" />
 					{m.theme_system()}
 					<Check
@@ -109,4 +53,57 @@ export function ThemeSwitch() {
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
+}
+
+export function useThemeSelection() {
+	const { resolvedTheme, theme, setTheme } = useTheme();
+
+	useEffect(() => {
+		const themeColor = resolvedTheme === "dark" ? "#020817" : "#fff";
+		document
+			.querySelector("meta[name='theme-color']")
+			?.setAttribute("content", themeColor);
+	}, [resolvedTheme]);
+
+	const selectTheme = useCallback(
+		(nextTheme: Theme, origin?: Pick<MouseEvent, "clientX" | "clientY">) => {
+			if (nextTheme === theme) return;
+
+			const prefersReducedMotion = window.matchMedia(
+				"(prefers-reduced-motion: reduce)",
+			).matches;
+			if (prefersReducedMotion || !("startViewTransition" in document)) {
+				setTheme(nextTheme);
+				return;
+			}
+
+			const x = origin?.clientX || window.innerWidth / 2;
+			const y = origin?.clientY || window.innerHeight / 2;
+			const radius = Math.hypot(
+				Math.max(x, window.innerWidth - x),
+				Math.max(y, window.innerHeight - y),
+			);
+			const transition = document.startViewTransition(() => {
+				flushSync(() => setTheme(nextTheme));
+			});
+			transition.ready.then(() => {
+				document.documentElement.animate(
+					{
+						clipPath: [
+							`circle(0px at ${x}px ${y}px)`,
+							`circle(${radius}px at ${x}px ${y}px)`,
+						],
+					},
+					{
+						duration: 500,
+						easing: "cubic-bezier(.34,1.56,.64,1)",
+						pseudoElement: "::view-transition-new(root)",
+					} as KeyframeAnimationOptions,
+				);
+			});
+		},
+		[setTheme, theme],
+	);
+
+	return { theme, selectTheme };
 }

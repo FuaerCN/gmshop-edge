@@ -8,6 +8,7 @@ import { quotePaymentCurrency } from "#/features/exchange-rates/server/quote";
 import type { PaymentWebhookEvent } from "#/features/shop-payments/provider";
 import { getPaymentProvider } from "#/features/shop-payments/providers";
 import { epusdtMerchantOrderId } from "#/features/shop-payments/providers/epusdt";
+import { mutateWallet } from "#/features/wallet/server/ledger";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret } from "#/lib/secrets";
 import { decimalToMinor } from "#/lib/units";
@@ -16,10 +17,15 @@ import { loadRuntimeConfig } from "#/server/runtime-config";
 type PaymentContext = {
 	attempt_id: string;
 	attempt_status: string;
-	order_id: string;
-	order_number: string;
-	order_status: string;
-	order_version: number;
+	order_id: string | null;
+	wallet_topup_id: string | null;
+	order_number: string | null;
+	order_status: string | null;
+	order_version: number | null;
+	topup_status: string | null;
+	topup_user_id: string | null;
+	topup_amount_minor: string | null;
+	topup_currency: string | null;
 	amount_minor: string;
 	currency: string;
 	currency_decimals: number;
@@ -213,6 +219,184 @@ export async function createShopPayment(
 	}
 }
 
+export async function createWalletTopupPayment(
+	db: D1Database,
+	input: {
+		userId: string;
+		amountMinor: string;
+		channelId: string;
+		idempotencyKey: string;
+		paymentCurrency?: string;
+		successUrl: string;
+		cancelUrl: string;
+		payerIp?: string | null;
+		payerMobile?: boolean;
+	},
+	fetcher: typeof fetch = fetch,
+) {
+	const existing = await db
+		.prepare(
+			`SELECT pa.id, pa.wallet_topup_id, pa.channel_id, pa.provider_payment_id,
+			 pa.checkout_url, pa.provider_expires_at, pa.status,
+			 topup.amount_minor AS topup_amount_minor
+			 FROM payment_attempts pa LEFT JOIN wallet_topups topup
+			  ON topup.id = pa.wallet_topup_id
+			 WHERE pa.idempotency_key = ? LIMIT 1`,
+		)
+		.bind(input.idempotencyKey)
+		.first<{
+			id: string;
+			wallet_topup_id: string | null;
+			channel_id: string;
+			provider_payment_id: string | null;
+			checkout_url: string | null;
+			provider_expires_at: number | null;
+			status: string;
+			topup_amount_minor: string | null;
+		}>();
+	if (existing) {
+		if (
+			existing.channel_id !== input.channelId ||
+			!existing.wallet_topup_id ||
+			existing.topup_amount_minor !== input.amountMinor
+		)
+			throw new DomainError(
+				"payment_idempotency_conflict",
+				409,
+				"Payment idempotency conflict",
+			);
+		return { topupId: existing.wallet_topup_id, ...presentAttempt(existing) };
+	}
+	const context = await db
+		.prepare(
+			`SELECT u.email, pc.id AS channel_id, pc.provider, pc.credential_encrypted,
+			 pc.default_token, pc.default_network,
+			 COALESCE((SELECT json_extract(value, '$') FROM system_settings
+			  WHERE key = 'commerce.default_currency'), 'USD') AS currency,
+			 COALESCE((SELECT CAST(json_extract(value, '$') AS INTEGER) FROM system_settings
+			  WHERE key = 'commerce.currency_decimals'), 2) AS currency_decimals
+			 FROM users u JOIN payment_channels pc ON pc.id = ?
+			 WHERE u.id = ? AND u.enabled = 1 AND pc.enabled = 1 LIMIT 1`,
+		)
+		.bind(input.channelId, input.userId)
+		.first<{
+			email: string;
+			channel_id: string;
+			provider: string;
+			credential_encrypted: string | null;
+			default_token: string;
+			default_network: string;
+			currency: string;
+			currency_decimals: number;
+		}>();
+	if (!context)
+		throw new DomainError(
+			"payment_channel_unavailable",
+			404,
+			"Payment channel unavailable",
+		);
+	const quote = await quotePaymentCurrency(db, {
+		amountMinor: input.amountMinor,
+		currency: context.currency,
+		currencyDecimals: context.currency_decimals,
+		paymentCurrency: input.paymentCurrency ?? context.currency,
+	});
+	const topupId = crypto.randomUUID();
+	const attemptId = crypto.randomUUID();
+	const now = Date.now();
+	await db.batch([
+		db
+			.prepare(
+				`INSERT INTO wallet_topups (id, user_id, amount_minor, currency, currency_decimals, status, idempotency_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+			)
+			.bind(
+				topupId,
+				input.userId,
+				input.amountMinor,
+				context.currency,
+				context.currency_decimals,
+				input.idempotencyKey,
+				now,
+				now,
+			),
+		db
+			.prepare(
+				`INSERT INTO payment_attempts (id, order_id, wallet_topup_id, channel_id, idempotency_key, status, amount_minor, currency, currency_decimals, exchange_rate_id, exchange_rate, exchange_rate_direction, exchange_rate_source, exchange_rate_adjustment_bps, exchange_rate_observed_at, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.bind(
+				attemptId,
+				topupId,
+				input.channelId,
+				input.idempotencyKey,
+				quote.amountMinor,
+				quote.currency,
+				quote.currencyDecimals,
+				quote.rateId,
+				quote.rate,
+				quote.rateDirection,
+				quote.rateSource,
+				quote.rateAdjustmentBps,
+				quote.rateObservedAt,
+				now,
+				now,
+			),
+	]);
+	try {
+		const credential = await loadCredential(db, context.credential_encrypted);
+		const payment = await getPaymentProvider(context.provider).createPayment(
+			{
+				attemptId,
+				orderId: topupId,
+				orderNumber: `TOPUP-${topupId}`,
+				amountMinor: quote.amountMinor,
+				currency: quote.currency,
+				currencyDecimals: quote.currencyDecimals,
+				customerEmail: context.email,
+				description: "Wallet top-up",
+				successUrl: input.successUrl,
+				cancelUrl: input.cancelUrl,
+				webhookUrl: new URL(
+					`/api/shop/payments/${encodeURIComponent(input.channelId)}/webhook`,
+					input.successUrl,
+				).toString(),
+				defaultToken: context.default_token,
+				defaultNetwork: context.default_network,
+				payerIp: input.payerIp ?? null,
+				payerMobile: input.payerMobile ?? false,
+			},
+			credential,
+			fetcher,
+		);
+		await db
+			.prepare(
+				"UPDATE payment_attempts SET provider_payment_id = ?, checkout_url = ?, provider_expires_at = ?, status = 'pending', updated_at = ? WHERE id = ? AND status = 'created'",
+			)
+			.bind(
+				payment.providerPaymentId,
+				payment.checkoutUrl,
+				payment.expiresAt,
+				Date.now(),
+				attemptId,
+			)
+			.run();
+		return { topupId, id: attemptId, status: "pending", ...payment };
+	} catch (error) {
+		await db.batch([
+			db
+				.prepare(
+					"UPDATE payment_attempts SET status = 'failed', failure_code = 'provider_create_failed', updated_at = ? WHERE id = ?",
+				)
+				.bind(Date.now(), attemptId),
+			db
+				.prepare(
+					"UPDATE wallet_topups SET status = 'failed', updated_at = ? WHERE id = ?",
+				)
+				.bind(Date.now(), topupId),
+		]);
+		throw error;
+	}
+}
+
 export async function handleShopPaymentWebhook(
 	request: Request,
 	channelId: string,
@@ -305,11 +489,72 @@ export async function processShopPaymentEvent(
 					"UPDATE payment_attempts SET status = ?, failure_code = ?, updated_at = ? WHERE id = ? AND status IN ('created', 'pending')",
 				)
 				.bind(status, event.type, now, context.attempt_id),
+			...(context.wallet_topup_id
+				? [
+						db
+							.prepare(
+								"UPDATE wallet_topups SET status = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
+							)
+							.bind(status, now, context.wallet_topup_id),
+					]
+				: []),
 		]);
 		if (result.duplicate)
 			return presentPaymentReplayReceipt(result.duplicate, event);
 		return { duplicate: false, status };
 	}
+	if (
+		context.wallet_topup_id &&
+		context.topup_user_id &&
+		context.topup_amount_minor &&
+		context.topup_currency
+	) {
+		if (context.topup_status !== "pending")
+			throw new DomainError(
+				"topup_not_payable",
+				409,
+				"Top-up cannot accept payment",
+			);
+		await mutateWallet(db, {
+			userId: context.topup_user_id,
+			direction: "credit",
+			amountMinor: context.topup_amount_minor,
+			currency: context.topup_currency,
+			sourceType: "topup",
+			sourceId: context.wallet_topup_id,
+			idempotencyKey: `wallet-topup:${context.wallet_topup_id}`,
+		});
+		const now = Date.now();
+		const result = await runPaymentEventBatch(db, channelId, event, [
+			paymentEventStatement(
+				db,
+				channelId,
+				context.attempt_id,
+				event,
+				"processed",
+				now,
+			),
+			db
+				.prepare(
+					"UPDATE payment_attempts SET status = 'succeeded', succeeded_at = ?, updated_at = ?, failure_code = NULL WHERE id = ? AND status IN ('created', 'pending')",
+				)
+				.bind(now, now, context.attempt_id),
+			db
+				.prepare(
+					"UPDATE wallet_topups SET status = 'paid', paid_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
+				)
+				.bind(now, now, context.wallet_topup_id),
+		]);
+		if (result.duplicate)
+			return presentPaymentReplayReceipt(result.duplicate, event);
+		return { duplicate: false, status: "succeeded" };
+	}
+	if (!context.order_id || context.order_version === null)
+		throw new DomainError(
+			"payment_subject_invalid",
+			409,
+			"Payment subject is invalid",
+		);
 	if (context.order_status !== "pending_payment")
 		throw new DomainError(
 			"order_not_payable",
@@ -510,6 +755,152 @@ export async function completeFreeStoreOrder(db: D1Database, orderId: string) {
 	return { duplicate: false, status: "paid" };
 }
 
+export async function completeWalletStoreOrder(
+	db: D1Database,
+	input: { orderId: string; userId: string },
+) {
+	const order = await db
+		.prepare(
+			`SELECT orders.id, orders.status, orders.version, orders.total_minor,
+			 orders.currency, orders.user_id, users.balance_minor, users.balance_version
+			 FROM shop_orders orders LEFT JOIN users ON users.id = orders.user_id
+			 WHERE orders.id = ? LIMIT 1`,
+		)
+		.bind(input.orderId)
+		.first<{
+			id: string;
+			status: string;
+			version: number;
+			total_minor: string;
+			currency: string;
+			user_id: string | null;
+			balance_minor: string | null;
+			balance_version: number | null;
+		}>();
+	if (!order || order.user_id !== input.userId)
+		throw new DomainError("order_not_found", 404, "Order not found");
+	if (order.status !== "pending_payment") {
+		if (["paid", "fulfilling", "completed"].includes(order.status))
+			return { duplicate: true, status: order.status };
+		throw new DomainError("order_not_payable", 409, "Order cannot be paid");
+	}
+	const settings = await db
+		.prepare(
+			"SELECT value FROM system_settings WHERE key = 'commerce.default_currency' LIMIT 1",
+		)
+		.first<{ value: string }>();
+	const currency = settings ? String(JSON.parse(settings.value)) : "USD";
+	if (order.currency !== currency)
+		throw new DomainError(
+			"wallet_currency_mismatch",
+			409,
+			"Wallet currency mismatch",
+		);
+	if (order.balance_minor === null || order.balance_version === null)
+		throw new DomainError(
+			"wallet_user_not_found",
+			404,
+			"Wallet user not found",
+		);
+	const balanceBefore = BigInt(order.balance_minor);
+	const amount = BigInt(order.total_minor);
+	if (balanceBefore < amount)
+		throw new DomainError(
+			"wallet_insufficient_balance",
+			409,
+			"Insufficient balance",
+		);
+	const balanceAfter = (balanceBefore - amount).toString();
+	const balanceVersion = order.balance_version + 1;
+	const walletIdempotencyKey = `wallet-order:${order.id}`;
+	const items = await db
+		.prepare(`${orderItemsForFulfillmentSql} WHERE oi.order_id = ?`)
+		.bind(order.id)
+		.all<OrderItem>();
+	const now = Date.now();
+	const version = order.version + 1;
+	const statements: D1PreparedStatement[] = [
+		db
+			.prepare(`UPDATE users SET balance_minor = ?, balance_version = ?, updated_at = ?
+		 WHERE id = ? AND enabled = 1 AND balance_version = ?
+		 AND EXISTS (SELECT 1 FROM shop_orders WHERE id = ? AND status = 'pending_payment' AND version = ?)`)
+			.bind(
+				balanceAfter,
+				balanceVersion,
+				now,
+				input.userId,
+				order.balance_version,
+				order.id,
+				order.version,
+			),
+		db
+			.prepare(`INSERT INTO wallet_entries
+		 (id, user_id, direction, amount_minor, balance_before_minor, balance_after_minor,
+		  currency, source_type, source_id, idempotency_key, created_at)
+		 SELECT ?, id, 'debit', ?, ?, balance_minor, ?, 'shop_order', ?, ?, ?
+		 FROM users WHERE id = ? AND balance_version = ? AND balance_minor = ?`)
+			.bind(
+				crypto.randomUUID(),
+				order.total_minor,
+				order.balance_minor,
+				currency,
+				order.id,
+				walletIdempotencyKey,
+				now,
+				input.userId,
+				balanceVersion,
+				balanceAfter,
+			),
+		db
+			.prepare(
+				`UPDATE shop_orders SET status = 'paid', paid_minor = total_minor, paid_at = ?, version = ?, updated_at = ? WHERE id = ? AND status = 'pending_payment' AND version = ? AND EXISTS (SELECT 1 FROM wallet_entries WHERE idempotency_key = ?)`,
+			)
+			.bind(now, version, now, order.id, order.version, walletIdempotencyKey),
+		db
+			.prepare(
+				`INSERT INTO shop_order_events (id, order_id, event_type, visibility, from_status, to_status, order_version, actor_type, created_at) SELECT ?, id, 'wallet_payment_succeeded', 'customer', 'pending_payment', 'paid', ?, 'customer', ? FROM shop_orders WHERE id = ? AND status = 'paid' AND version = ?`,
+			)
+			.bind(crypto.randomUUID(), version, now, order.id, version),
+	];
+	for (const item of items.results)
+		statements.push(...fulfillmentStatements(db, order.id, item, now));
+	statements.push(
+		db
+			.prepare(
+				"UPDATE coupon_redemptions SET status = 'consumed', updated_at = ? WHERE order_id = ? AND status = 'reserved'",
+			)
+			.bind(now, order.id),
+		db
+			.prepare(
+				`INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload, status, attempt_count, created_at, updated_at) SELECT ?, 'shop_order.paid', 'shop_order', id, ?, ?, 'pending', 0, ?, ? FROM shop_orders WHERE id = ? AND status = 'paid' AND version = ?`,
+			)
+			.bind(
+				crypto.randomUUID(),
+				`shop-order-paid:${order.id}:${version}`,
+				JSON.stringify({ orderId: order.id, version }),
+				now,
+				now,
+				order.id,
+				version,
+			),
+	);
+	const results = await db.batch(statements);
+	if (Number(results[0]?.meta.changes ?? 0) !== 1) {
+		const current = await db
+			.prepare("SELECT status FROM shop_orders WHERE id = ?")
+			.bind(order.id)
+			.first<{ status: string }>();
+		if (current && ["paid", "fulfilling", "completed"].includes(current.status))
+			return { duplicate: true, status: current.status };
+		throw new DomainError(
+			"order_version_conflict",
+			409,
+			"Order or wallet changed; retry payment",
+		);
+	}
+	return { duplicate: false, status: "paid" };
+}
+
 async function loadCredential(db: D1Database, encrypted: string | null) {
 	if (!encrypted) return {};
 	const runtime = await loadRuntimeConfig(db);
@@ -537,10 +928,16 @@ async function loadPaymentContext(
 		.prepare(
 			`SELECT pa.id AS attempt_id, pa.status AS attempt_status, pa.amount_minor,
 			 pa.currency, pa.currency_decimals, pa.channel_id, o.id AS order_id,
-			 o.order_number,
-			 o.status AS order_status, o.version AS order_version, o.contact_email,
+			 pa.wallet_topup_id, o.order_number,
+			 o.status AS order_status, o.version AS order_version,
+			 topup.status AS topup_status, topup.user_id AS topup_user_id,
+			 topup.amount_minor AS topup_amount_minor,
+			 topup.currency AS topup_currency,
+			 COALESCE(o.contact_email, topup_user.email) AS contact_email,
 			 pc.provider, pc.credential_encrypted
-			 FROM payment_attempts pa JOIN shop_orders o ON o.id = pa.order_id
+			 FROM payment_attempts pa LEFT JOIN shop_orders o ON o.id = pa.order_id
+			 LEFT JOIN wallet_topups topup ON topup.id = pa.wallet_topup_id
+			 LEFT JOIN users topup_user ON topup_user.id = topup.user_id
 			 JOIN payment_channels pc ON pc.id = pa.channel_id
 			 WHERE pa.channel_id = ? AND pa.provider_payment_id = ? LIMIT 1`,
 		)

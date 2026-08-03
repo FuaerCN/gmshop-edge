@@ -761,7 +761,10 @@ function keyOf(source: Source) {
 }
 
 function providerLabel(provider: Source["provider"]) {
-	return provider === "acg" ? "异次元发卡" : "独角数卡 Next";
+	if (provider === "acg") return "异次元发卡";
+	return provider === "gmshop_edge"
+		? m.supplier_provider_gmshop_edge()
+		: "独角数卡 Next";
 }
 
 function SupplierAvailabilityBadge({ status }: { status: string }) {

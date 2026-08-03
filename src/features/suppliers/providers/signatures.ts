@@ -32,6 +32,26 @@ export function signDujiaoNextRequest(input: {
 	return createHmac("sha256", input.apiSecret).update(payload).digest("hex");
 }
 
+export function signGmshopEdgeRequest(input: {
+	method: string;
+	pathWithQuery: string;
+	timestamp: string;
+	nonce: string;
+	rawBody: string;
+	apiSecret: string;
+}): string {
+	if (!input.pathWithQuery.startsWith("/"))
+		throw new TypeError("GMShop Edge signing path must be absolute");
+	const payload = [
+		input.method.toUpperCase(),
+		input.pathWithQuery,
+		input.timestamp,
+		input.nonce,
+		createHash("sha256").update(input.rawBody).digest("hex"),
+	].join("\n");
+	return createHmac("sha256", input.apiSecret).update(payload).digest("hex");
+}
+
 export function providerRequestNumber(
 	provider: SupplierProvider,
 	supplierOrderId: string,

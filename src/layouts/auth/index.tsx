@@ -1,12 +1,11 @@
-import { Outlet } from "@tanstack/react-router";
+import { Link, Outlet } from "@tanstack/react-router";
 import { AnimatedCharacters } from "#/features/auth/components/animated-characters";
 import {
 	AuthAnimationProvider,
 	useAuthAnimation,
 } from "#/features/auth/components/auth-animation-context";
 import { AppTitle } from "#/layouts/components/app-title";
-import { LocaleSwitch } from "#/layouts/components/locale-switch";
-import { ThemeSwitch } from "#/layouts/components/theme-switch";
+import { QuickSettings } from "#/layouts/components/quick-settings";
 import { m } from "#/paraglide/messages";
 
 export function AuthLayout() {
@@ -48,11 +47,14 @@ function AuthLayoutContent() {
 			</section>
 			<section className="flex h-full min-w-xs flex-col lg:p-8">
 				<header className="mx-auto flex w-full items-center justify-between py-4 sm:px-8 lg:px-0 lg:py-0">
-					<AppTitle description />
-					<div className="flex items-center gap-1">
-						<LocaleSwitch />
-						<ThemeSwitch />
-					</div>
+					<Link
+						aria-label={m.store_nav_shop()}
+						className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+						to="/"
+					>
+						<AppTitle description />
+					</Link>
+					<QuickSettings />
 				</header>
 				<main
 					className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center pb-24 outline-none"

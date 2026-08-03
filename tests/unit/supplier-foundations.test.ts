@@ -7,6 +7,7 @@ import {
 } from "#/features/suppliers/money";
 import { AcgAdapter } from "#/features/suppliers/providers/acg";
 import { DujiaoNextAdapter } from "#/features/suppliers/providers/dujiao-next";
+import { GmshopEdgeAdapter } from "#/features/suppliers/providers/gmshop-edge";
 import {
 	providerRequestNumber,
 	signAcgForm,
@@ -90,6 +91,33 @@ describe("supplier destination DNS", () => {
 });
 
 describe("supplier provider signatures", () => {
+	it("connects to a native GMShop Edge supplier with signed requests", async () => {
+		const adapter = new GmshopEdgeAdapter({
+			baseUrl: "https://supplier.example",
+			apiKey: "gme_test",
+			apiSecret: "a".repeat(64),
+			currency: "USD",
+			currencyDecimals: 2,
+			now: () => 1_700_000_000_000,
+			nonce: () => "00000000-0000-4000-8000-000000000001",
+			fetcher: async (input, init) => {
+				const request = new Request(input, init);
+				expect(request.headers.get("GMShop-Edge-Api-Key")).toBe("gme_test");
+				expect(request.headers.get("GMShop-Edge-Signature")).toMatch(
+					/^[a-f0-9]{64}$/,
+				);
+				return Response.json({
+					site_name: "Upstream",
+					balance_minor: "1234",
+					currency: "USD",
+				});
+			},
+		});
+		expect(await adapter.testConnection()).toEqual({
+			siteName: "Upstream",
+			balance: { amountMinor: "1234", currency: "USD" },
+		});
+	});
 	it("sorts non-empty ACG fields and appends the key", () => {
 		const expected = createHash("md5")
 			.update("quantity=2&sku_id=sku-1&trade_no=trade-1&key=secret")

@@ -2,8 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Download, Eye, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import {
+	Download,
+	Eye,
+	MoreHorizontal,
+	Pencil,
+	Trash2,
+	WalletCards,
+} from "lucide-react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ProButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
@@ -17,6 +24,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
+import { Input } from "#/components/ui/input";
 import {
 	systemAccessQueryKey,
 	systemAccessQueryOptions,
@@ -29,6 +37,7 @@ import {
 import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { customerOperationErrorMessage } from "#/features/customers/error-message";
 import {
+	adjustCustomerWalletFn,
 	deleteCustomerDataFn,
 	exportCustomerDataFn,
 	getCustomerFn,
@@ -55,6 +64,7 @@ import type { AdminUserRecord } from "#/features/users/server/users";
 import { ConfirmDialog } from "#/layouts/components/confirm-dialog";
 import { PageHeader } from "#/layouts/components/page-header";
 import { formatDateTime, formatMinorAmount, formatNumber } from "#/lib/format";
+import { parseMajorInput } from "#/lib/money-input";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
 
@@ -75,6 +85,7 @@ export function UsersPage({
 		null,
 	);
 	const [detail, setDetail] = useState<CustomerDetail | null>(null);
+	const [adjustingWallet, setAdjustingWallet] = useState<Customer | null>(null);
 	const [exportingData, setExportingData] = useState<Customer | null>(null);
 	const [deletingData, setDeletingData] = useState<Customer | null>(null);
 	const [sensitiveProof, setSensitiveProof] = useState("");
@@ -332,6 +343,16 @@ export function UsersPage({
 			...(canReadCustomers
 				? [
 						{
+							accessorKey: "balanceMinor",
+							header: m.wallet_balance(),
+							cell: ({ row }: { row: { original: Customer } }) =>
+								formatMinorAmount(
+									row.original.balanceMinor,
+									row.original.balanceCurrency,
+									row.original.balanceCurrencyDecimals,
+								),
+						},
+						{
 							accessorKey: "orderCount",
 							header: m.customers_orders(),
 							cell: ({ row }: { row: { original: Customer } }) =>
@@ -375,7 +396,10 @@ export function UsersPage({
 					const canDeleteAccount =
 						Boolean(row.original.userId) && canDeleteUsers;
 					const hasNonDeleteAction =
-						canEdit || canReadCustomers || canExportCustomers;
+						canEdit ||
+						canReadCustomers ||
+						canUpdateCustomers ||
+						canExportCustomers;
 					const hasDeleteAction = canDeleteAccount || canDeleteCustomerData;
 					if (!hasNonDeleteAction && !hasDeleteAction) return "—";
 					return (
@@ -408,6 +432,14 @@ export function UsersPage({
 										>
 											<Eye />
 											{m.customers_view()}
+										</DropdownMenuItem>
+									) : null}
+									{canUpdateCustomers ? (
+										<DropdownMenuItem
+											onClick={() => setAdjustingWallet(row.original)}
+										>
+											<WalletCards />
+											{m.wallet_adjust()}
 										</DropdownMenuItem>
 									) : null}
 									{canExportCustomers ? (
@@ -528,9 +560,28 @@ export function UsersPage({
 					}
 				/>
 			) : null}
+			{adjustingWallet ? (
+				<WalletAdjustmentModal
+					customerId={adjustingWallet.id}
+					currency={adjustingWallet.balanceCurrency}
+					currencyDecimals={adjustingWallet.balanceCurrencyDecimals}
+					currentBalanceMinor={adjustingWallet.balanceMinor}
+					onOpenChange={(open) => !open && setAdjustingWallet(null)}
+					onUpdated={async () => {
+						setAdjustingWallet(null);
+						await refresh();
+					}}
+					open
+				/>
+			) : null}
 			<CustomerDetailModal
+				canUpdate={canUpdateCustomers}
 				detail={detail}
 				onOpenChange={(open) => !open && setDetail(null)}
+				onUpdated={async () => {
+					await refresh();
+					if (detail) await loadDetail.mutateAsync({ data: { id: detail.id } });
+				}}
 			/>
 			<ModalForm
 				open={Boolean(exportingData)}
@@ -594,11 +645,15 @@ export function UsersPage({
 }
 
 function CustomerDetailModal({
+	canUpdate,
 	detail,
 	onOpenChange,
+	onUpdated,
 }: {
+	canUpdate: boolean;
 	detail: CustomerDetail | null;
 	onOpenChange: (open: boolean) => void;
+	onUpdated: () => Promise<void>;
 }) {
 	const loginMethods = detail
 		? visibleLoginMethods(detail.loginMethods, detail.email)
@@ -617,7 +672,15 @@ function CustomerDetailModal({
 		>
 			{detail ? (
 				<div className="grid gap-5 overflow-y-auto">
-					<div className="grid gap-3 sm:grid-cols-3">
+					<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+						<Summary
+							label={m.wallet_balance()}
+							value={formatMinorAmount(
+								detail.wallet.balanceMinor,
+								detail.wallet.currency,
+								detail.wallet.currencyDecimals,
+							)}
+						/>
 						<Summary
 							label={m.customers_orders()}
 							value={formatNumber(detail.orderCount)}
@@ -665,7 +728,19 @@ function CustomerDetailModal({
 						)}
 					</section>
 					<section className="grid gap-2">
-						<h3 className="font-semibold">{m.customers_balances()}</h3>
+						<div className="flex items-center justify-between gap-3">
+							<h3 className="font-semibold">{m.customers_balances()}</h3>
+							{canUpdate ? (
+								<WalletAdjustmentModal
+									customerId={detail.id}
+									currency={detail.wallet.currency}
+									currencyDecimals={detail.wallet.currencyDecimals}
+									currentBalanceMinor={detail.wallet.balanceMinor}
+									onUpdated={onUpdated}
+									trigger={<ProButton size="sm">{m.wallet_adjust()}</ProButton>}
+								/>
+							) : null}
+						</div>
 						{detail.balances.length ? (
 							detail.balances.map((balance) => (
 								<div
@@ -743,6 +818,124 @@ function CustomerDetailModal({
 				</div>
 			) : null}
 		</ProModal>
+	);
+}
+
+function WalletAdjustmentModal({
+	customerId,
+	currency,
+	currencyDecimals,
+	currentBalanceMinor,
+	open,
+	onOpenChange,
+	onUpdated,
+	trigger,
+}: {
+	customerId: string;
+	currency: string;
+	currencyDecimals: number;
+	currentBalanceMinor: string;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	onUpdated: () => Promise<void>;
+	trigger?: ReactNode;
+}) {
+	const adjust = useMutation({
+		mutationFn: adjustCustomerWalletFn,
+		onError: showError,
+	});
+	return (
+		<ModalForm
+			description={`${m.wallet_balance()}: ${formatMinorAmount(currentBalanceMinor, currency, currencyDecimals)}`}
+			initialValues={{ direction: "credit" }}
+			onFinish={async (values) => {
+				await adjust.mutateAsync({
+					data: {
+						id: customerId,
+						direction: String(values.direction) as "credit" | "debit",
+						amountMinor: String(values.amountMinor ?? ""),
+						reason: String(values.reason ?? ""),
+						idempotencyKey: crypto.randomUUID(),
+					},
+				});
+				await onUpdated();
+			}}
+			onOpenChange={onOpenChange}
+			open={open}
+			schema={[
+				{
+					name: "direction",
+					label: m.wallet_adjust_direction(),
+					valueType: "select" as const,
+					required: true,
+					fieldProps: {
+						options: [
+							{ label: m.wallet_credit(), value: "credit" },
+							{ label: m.wallet_debit(), value: "debit" },
+						],
+					},
+				},
+				{
+					name: "amountMinor",
+					label: m.wallet_adjust_amount(),
+					required: true,
+					render: (field) => (
+						<WalletAmountInput
+							currency={currency}
+							decimals={currencyDecimals}
+							onChange={field.onChange}
+						/>
+					),
+				},
+				{
+					name: "reason",
+					label: m.wallet_adjust_reason(),
+					required: true,
+				},
+			]}
+			title={m.wallet_adjust()}
+			trigger={trigger}
+			validate={(values) => {
+				const errors: Record<string, string[]> = {};
+				if (!isPositiveMinor(values.amountMinor))
+					errors.amountMinor = [m.store_input_required()];
+				return errors;
+			}}
+		/>
+	);
+}
+
+function isPositiveMinor(value: unknown) {
+	return typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
+}
+
+function WalletAmountInput({
+	currency,
+	decimals,
+	onChange,
+}: {
+	currency: string;
+	decimals: number;
+	onChange: (value: string) => void;
+}) {
+	const [display, setDisplay] = useState("");
+	return (
+		<div className="relative">
+			<Input
+				className="pr-16"
+				inputMode="decimal"
+				onChange={(event) => {
+					const value = event.target.value;
+					setDisplay(value);
+					const parsed = parseMajorInput(value, decimals);
+					onChange(parsed === undefined ? "" : (parsed ?? ""));
+				}}
+				value={display}
+			/>
+			<span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground text-sm">
+				{currency}
+			</span>
+		</div>
 	);
 }
 

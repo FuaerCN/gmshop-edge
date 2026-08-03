@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { paymentProviderFamily } from "#/features/shop-payments/provider";
+import { paymentChannelFormErrors } from "#/features/shop-payments/form-validation";
+import {
+	paymentProviderDefaultCurrency,
+	paymentProviderFamily,
+} from "#/features/shop-payments/provider";
 import { paymentCheckoutPresentation } from "#/features/shop-payments/providers";
 import { paymentChannelInputSchema } from "#/features/shop-payments/schema";
+import { m } from "#/paraglide/messages";
 
 describe("payment provider families", () => {
 	it("groups Alipay and WeChat integration modes under one payment type", () => {
@@ -16,6 +21,12 @@ describe("payment provider families", () => {
 		expect(paymentProviderFamily("cryptomus")).toBe("cryptomus");
 		expect(paymentProviderFamily("gmpay")).toBe("gmpay");
 		expect(paymentProviderFamily("epay")).toBe("epay");
+	});
+
+	it("defaults China payment families to CNY", () => {
+		expect(paymentProviderDefaultCurrency("alipay_page", "USD")).toBe("CNY");
+		expect(paymentProviderDefaultCurrency("wechat_native", "EUR")).toBe("CNY");
+		expect(paymentProviderDefaultCurrency("stripe", "EUR")).toBe("EUR");
 	});
 
 	it("declares checkout presentation as a provider capability", () => {
@@ -73,5 +84,64 @@ describe("payment provider families", () => {
 				cryptomusPaymentApiKey: "payment-api-key",
 			}).success,
 		).toBe(true);
+	});
+
+	it("returns provider-specific field errors before a payment request is sent", () => {
+		const common = {
+			name: "Payment",
+			currency: "USD",
+			defaultToken: "",
+			defaultNetwork: "",
+			feeBps: 0,
+			fixedFeeMinor: "0",
+			sortOrder: 100,
+			enabled: false,
+			epusdtPaymentMethod: "alipay",
+		};
+		expect(
+			paymentChannelFormErrors({
+				...common,
+				provider: "gmpay",
+				epusdtBaseUrl: "https://baidu.com",
+				epusdtPid: "12345",
+				epusdtSecretKey: "123456",
+			}),
+		).toMatchObject({
+			epusdtSecretKey: [m.payment_channels_validation_secret_length()],
+		});
+		expect(
+			paymentChannelFormErrors({
+				...common,
+				provider: "epay",
+				epusdtBaseUrl: "https://example.com",
+				epusdtPid: "merchant",
+				epusdtSecretKey: "12345678",
+			}),
+		).toMatchObject({
+			epusdtPid: [m.payment_channels_validation_epay_pid()],
+		});
+		expect(
+			paymentChannelFormErrors({
+				...common,
+				provider: "stripe",
+				stripeSecretKey: "secret",
+				stripeWebhookSecret: "webhook",
+			}),
+		).toMatchObject({
+			stripeSecretKey: [m.payment_channels_validation_stripe_secret()],
+			stripeWebhookSecret: [m.payment_channels_validation_stripe_webhook()],
+		});
+		expect(
+			paymentChannelFormErrors({
+				...common,
+				provider: "alipay_page",
+				alipayAppId: "1234567890123456",
+				alipaySellerId: "1234567890123456",
+				alipayPrivateKeyPem: "PRIVATE KEY",
+				alipayPublicKeyPem: "PUBLIC KEY",
+			}),
+		).toMatchObject({
+			currency: [m.payment_channels_validation_cny_currency()],
+		});
 	});
 });

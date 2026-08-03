@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { paymentProviderValues } from "#/features/shop-payments/provider";
+import {
+	alipayCredentialSchema,
+	cryptomusCredentialSchema,
+	epayCredentialSchema,
+	gmpayCredentialSchema,
+	paymentProviderValues,
+	stripeCredentialSchema,
+	wechatCredentialSchema,
+} from "#/features/shop-payments/provider";
 
 const idSchema = z.string().uuid();
 
@@ -36,8 +44,8 @@ export const paymentChannelInputSchema = z
 			.string()
 			.trim()
 			.toLowerCase()
-			.regex(/^[a-z][a-z0-9_-]{0,39}$/)
-			.default("alipay"),
+			.regex(/^(?:[a-z][a-z0-9_-]{0,39})?$/)
+			.default(""),
 		alipayAppId: z.string().trim().max(32).optional(),
 		alipaySellerId: z.string().trim().max(32).optional(),
 		alipayPrivateKeyPem: z.string().max(8_192).optional(),
@@ -61,48 +69,37 @@ export const paymentChannelInputSchema = z
 			value.cryptomusMerchantId || value.cryptomusPaymentApiKey,
 		);
 		if (value.provider === "cryptomus") {
-			if (!value.id || changingCryptomus) {
-				if (!z.string().uuid().safeParse(value.cryptomusMerchantId).success)
-					context.addIssue({
-						code: "custom",
-						path: ["cryptomusMerchantId"],
-						message: "Cryptomus merchant UUID is required",
-					});
-				if (
-					!value.cryptomusPaymentApiKey ||
-					value.cryptomusPaymentApiKey.length < 8
-				)
-					context.addIssue({
-						code: "custom",
-						path: ["cryptomusPaymentApiKey"],
-						message: "Cryptomus payment API key is required",
-					});
-			}
+			if (!value.id || changingCryptomus)
+				addCredentialIssues(
+					cryptomusCredentialSchema.safeParse({
+						merchantId: value.cryptomusMerchantId,
+						paymentApiKey: value.cryptomusPaymentApiKey,
+					}),
+					{
+						merchantId: "cryptomusMerchantId",
+						paymentApiKey: "cryptomusPaymentApiKey",
+					},
+					context,
+				);
 			return;
 		}
 		const changingStripe =
 			Boolean(value.stripeSecretKey) || Boolean(value.stripeWebhookSecret);
-		if (
-			value.provider === "stripe" &&
-			(!value.id || changingStripe) &&
-			!value.stripeSecretKey?.startsWith("sk_")
-		)
-			context.addIssue({
-				code: "custom",
-				path: ["stripeSecretKey"],
-				message: "Stripe secret key is required",
-			});
-		if (
-			value.provider === "stripe" &&
-			(!value.id || changingStripe) &&
-			!value.stripeWebhookSecret?.startsWith("whsec_")
-		)
-			context.addIssue({
-				code: "custom",
-				path: ["stripeWebhookSecret"],
-				message: "Stripe webhook secret is required",
-			});
-		if (value.provider === "stripe") return;
+		if (value.provider === "stripe") {
+			if (!value.id || changingStripe)
+				addCredentialIssues(
+					stripeCredentialSchema.safeParse({
+						secretKey: value.stripeSecretKey,
+						webhookSecret: value.stripeWebhookSecret,
+					}),
+					{
+						secretKey: "stripeSecretKey",
+						webhookSecret: "stripeWebhookSecret",
+					},
+					context,
+				);
+			return;
+		}
 		if (
 			["alipay_page", "alipay_wap", "wechat_native", "wechat_h5"].includes(
 				value.provider,
@@ -115,69 +112,117 @@ export const paymentChannelInputSchema = z
 				message: "This provider requires CNY",
 			});
 		if (value.provider === "alipay_page" || value.provider === "alipay_wap") {
-			const fields = [
-				["alipayAppId", value.alipayAppId],
-				["alipaySellerId", value.alipaySellerId],
-				["alipayPrivateKeyPem", value.alipayPrivateKeyPem],
-				["alipayPublicKeyPem", value.alipayPublicKeyPem],
-			] as const;
-			if (!value.id || fields.some(([, field]) => Boolean(field)))
-				for (const [path, field] of fields)
-					if (!field)
-						context.addIssue({
-							code: "custom",
-							path: [path],
-							message: "Alipay credential is required",
-						});
+			const changingCredential = Boolean(
+				value.alipayAppId ||
+					value.alipaySellerId ||
+					value.alipayPrivateKeyPem ||
+					value.alipayPublicKeyPem,
+			);
+			if (!value.id || changingCredential)
+				addCredentialIssues(
+					alipayCredentialSchema.safeParse({
+						appId: value.alipayAppId,
+						sellerId: value.alipaySellerId,
+						privateKeyPem: value.alipayPrivateKeyPem,
+						alipayPublicKeyPem: value.alipayPublicKeyPem,
+					}),
+					{
+						appId: "alipayAppId",
+						sellerId: "alipaySellerId",
+						privateKeyPem: "alipayPrivateKeyPem",
+						alipayPublicKeyPem: "alipayPublicKeyPem",
+					},
+					context,
+				);
 			return;
 		}
 		if (value.provider === "wechat_native" || value.provider === "wechat_h5") {
-			const fields = [
-				["wechatAppId", value.wechatAppId],
-				["wechatMchId", value.wechatMchId],
-				["wechatMerchantSerialNumber", value.wechatMerchantSerialNumber],
-				["wechatMerchantPrivateKeyPem", value.wechatMerchantPrivateKeyPem],
-				["wechatApiV3Key", value.wechatApiV3Key],
-				["wechatPlatformSerialNumber", value.wechatPlatformSerialNumber],
-				["wechatPlatformPublicKeyPem", value.wechatPlatformPublicKeyPem],
-			] as const;
-			if (!value.id || fields.some(([, field]) => Boolean(field)))
-				for (const [path, field] of fields)
-					if (!field)
-						context.addIssue({
-							code: "custom",
-							path: [path],
-							message: "WeChat Pay credential is required",
-						});
+			const changingCredential = Boolean(
+				value.wechatAppId ||
+					value.wechatMchId ||
+					value.wechatMerchantSerialNumber ||
+					value.wechatMerchantPrivateKeyPem ||
+					value.wechatApiV3Key ||
+					value.wechatPlatformSerialNumber ||
+					value.wechatPlatformPublicKeyPem,
+			);
+			if (!value.id || changingCredential)
+				addCredentialIssues(
+					wechatCredentialSchema.safeParse({
+						appId: value.wechatAppId,
+						mchId: value.wechatMchId,
+						merchantSerialNumber: value.wechatMerchantSerialNumber,
+						merchantPrivateKeyPem: value.wechatMerchantPrivateKeyPem,
+						apiV3Key: value.wechatApiV3Key,
+						platformSerialNumber: value.wechatPlatformSerialNumber,
+						platformPublicKeyPem: value.wechatPlatformPublicKeyPem,
+					}),
+					{
+						appId: "wechatAppId",
+						mchId: "wechatMchId",
+						merchantSerialNumber: "wechatMerchantSerialNumber",
+						merchantPrivateKeyPem: "wechatMerchantPrivateKeyPem",
+						apiV3Key: "wechatApiV3Key",
+						platformSerialNumber: "wechatPlatformSerialNumber",
+						platformPublicKeyPem: "wechatPlatformPublicKeyPem",
+					},
+					context,
+				);
 			return;
 		}
 		const changingEpusdt = Boolean(
 			value.epusdtBaseUrl || value.epusdtPid || value.epusdtSecretKey,
 		);
 		if (!value.id || changingEpusdt) {
-			for (const [path, field] of [
-				["epusdtBaseUrl", value.epusdtBaseUrl],
-				["epusdtPid", value.epusdtPid],
-				["epusdtSecretKey", value.epusdtSecretKey],
-			] as const)
-				if (!field)
-					context.addIssue({
-						code: "custom",
-						path: [path],
-						message: "Epusdt credential is required",
-					});
+			const schema =
+				value.provider === "gmpay"
+					? gmpayCredentialSchema
+					: epayCredentialSchema;
+			addCredentialIssues(
+				schema.safeParse({
+					baseUrl: value.epusdtBaseUrl,
+					pid: value.epusdtPid,
+					secretKey: value.epusdtSecretKey,
+					paymentMethod: value.epusdtPaymentMethod,
+				}),
+				{
+					baseUrl: "epusdtBaseUrl",
+					pid: "epusdtPid",
+					secretKey: "epusdtSecretKey",
+					paymentMethod: "epusdtPaymentMethod",
+				},
+				context,
+			);
 		}
-		if (
-			value.provider === "epay" &&
-			value.epusdtPid &&
-			!/^\d+$/.test(value.epusdtPid)
-		)
-			context.addIssue({
-				code: "custom",
-				path: ["epusdtPid"],
-				message: "EPay requires a numeric PID",
-			});
 	});
+
+type CredentialParseResult =
+	| { success: true }
+	| {
+			success: false;
+			error: { issues: readonly { path: PropertyKey[]; message: string }[] };
+	  };
+
+function addCredentialIssues(
+	result: CredentialParseResult,
+	fieldNames: Record<string, string>,
+	context: z.RefinementCtx,
+) {
+	if (result.success) return;
+	for (const issue of result.error.issues) {
+		const credentialField = issue.path[0];
+		const field =
+			typeof credentialField === "string"
+				? fieldNames[credentialField]
+				: undefined;
+		if (!field) continue;
+		context.addIssue({
+			code: "custom",
+			path: [field],
+			message: issue.message,
+		});
+	}
+}
 
 export const paymentChannelIdSchema = z.object({ id: idSchema });
 export const paymentChannelOrderSchema = z.object({

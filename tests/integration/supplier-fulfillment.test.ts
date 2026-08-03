@@ -38,7 +38,10 @@ describe("supplier fulfillment", { timeout: 30_000 }, () => {
 			.all<{ name: string }>();
 		expect(tables.results).toEqual([
 			{ name: "supplier_accounts" },
+			{ name: "supplier_api_keys" },
+			{ name: "supplier_api_orders" },
 			{ name: "supplier_bindings" },
+			{ name: "supplier_export_listings" },
 			{ name: "supplier_orders" },
 		]);
 		await expect(

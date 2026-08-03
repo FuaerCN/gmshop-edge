@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as OpenapiRouteImport } from './routes/openapi'
 import { Route as InstallRouteImport } from './routes/install'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as publicRouteRouteImport } from './routes/(public)/route'
@@ -57,6 +58,7 @@ import { Route as AdminSuppliersProductsRouteImport } from './routes/admin/suppl
 import { Route as AdminSuppliersOrdersRouteImport } from './routes/admin/suppliers/orders'
 import { Route as AdminSuppliersAccountsRouteImport } from './routes/admin/suppliers/accounts'
 import { Route as AdminSettingsTelegramRouteImport } from './routes/admin/settings/telegram'
+import { Route as AdminSettingsSupplierApiRouteImport } from './routes/admin/settings/supplier-api'
 import { Route as AdminSettingsSecretsRouteImport } from './routes/admin/settings/secrets'
 import { Route as AdminSettingsRetentionRouteImport } from './routes/admin/settings/retention'
 import { Route as AdminSettingsOrdersRouteImport } from './routes/admin/settings/orders'
@@ -78,6 +80,7 @@ import { Route as AdminAccessPermissionBitsRouteImport } from './routes/admin/ac
 import { Route as AdminAccessModulesRouteImport } from './routes/admin/access/modules'
 import { Route as publicProductsProductIdRouteImport } from './routes/(public)/products/$productId'
 import { Route as publicOrdersOrderNumberRouteImport } from './routes/(public)/orders/$orderNumber'
+import { Route as publicAccountWalletRouteImport } from './routes/(public)/account/wallet'
 import { Route as publicAccountSettingsRouteImport } from './routes/(public)/account/settings'
 import { Route as publicAccountSessionsRouteImport } from './routes/(public)/account/sessions'
 import { Route as publicAccountSecurityRouteImport } from './routes/(public)/account/security'
@@ -88,6 +91,7 @@ import { Route as AdminProductsProductIdRouteRouteImport } from './routes/admin/
 import { Route as AdminProductsProductIdIndexRouteImport } from './routes/admin/products/$productId/index'
 import { Route as publicAccountOrdersIndexRouteImport } from './routes/(public)/account/orders/index'
 import { Route as publicAccountEntitlementsIndexRouteImport } from './routes/(public)/account/entitlements/index'
+import { Route as ApiV1SupplierSplatRouteImport } from './routes/api/v1/supplier/$'
 import { Route as ApiSupportWebStatusRouteImport } from './routes/api/support/web/status'
 import { Route as ApiSupportWebMessagesRouteImport } from './routes/api/support/web/messages'
 import { Route as ApiSupportWebCurrentRouteImport } from './routes/api/support/web/current'
@@ -110,6 +114,11 @@ import { Route as ApiShopOrdersOrderNumberAutomationJobIdRetryRouteImport } from
 import { Route as ApiShopOrdersOrderNumberAutomationJobIdCancelRouteImport } from './routes/api/shop/orders/$orderNumber/automation/$jobId/cancel'
 import { Route as ApiShopOrdersOrderNumberAutomationJobIdArtifactsArtifactIdRouteImport } from './routes/api/shop/orders/$orderNumber/automation/$jobId/artifacts/$artifactId'
 
+const OpenapiRoute = OpenapiRouteImport.update({
+  id: '/openapi',
+  path: '/openapi',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InstallRoute = InstallRouteImport.update({
   id: '/install',
   path: '/install',
@@ -349,6 +358,12 @@ const AdminSettingsTelegramRoute = AdminSettingsTelegramRouteImport.update({
   path: '/telegram',
   getParentRoute: () => AdminSettingsRouteRoute,
 } as any)
+const AdminSettingsSupplierApiRoute =
+  AdminSettingsSupplierApiRouteImport.update({
+    id: '/supplier-api',
+    path: '/supplier-api',
+    getParentRoute: () => AdminSettingsRouteRoute,
+  } as any)
 const AdminSettingsSecretsRoute = AdminSettingsSecretsRouteImport.update({
   id: '/secrets',
   path: '/secrets',
@@ -458,6 +473,11 @@ const publicOrdersOrderNumberRoute = publicOrdersOrderNumberRouteImport.update({
   path: '/orders/$orderNumber',
   getParentRoute: () => publicRouteRoute,
 } as any)
+const publicAccountWalletRoute = publicAccountWalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
+  getParentRoute: () => publicAccountRouteRoute,
+} as any)
 const publicAccountSettingsRoute = publicAccountSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -514,6 +534,11 @@ const publicAccountEntitlementsIndexRoute =
     path: '/entitlements/',
     getParentRoute: () => publicAccountRouteRoute,
   } as any)
+const ApiV1SupplierSplatRoute = ApiV1SupplierSplatRouteImport.update({
+  id: '/api/v1/supplier/$',
+  path: '/api/v1/supplier/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSupportWebStatusRoute = ApiSupportWebStatusRouteImport.update({
   id: '/api/support/web/status',
   path: '/api/support/web/status',
@@ -639,6 +664,7 @@ const ApiShopOrdersOrderNumberAutomationJobIdArtifactsArtifactIdRoute =
 export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteRouteWithChildren
   '/install': typeof InstallRoute
+  '/openapi': typeof OpenapiRoute
   '/account': typeof publicAccountRouteRouteWithChildren
   '/admin/access': typeof AdminAccessRouteRouteWithChildren
   '/admin/email': typeof AdminEmailRouteRouteWithChildren
@@ -674,6 +700,7 @@ export interface FileRoutesByFullPath {
   '/account/security': typeof publicAccountSecurityRoute
   '/account/sessions': typeof publicAccountSessionsRoute
   '/account/settings': typeof publicAccountSettingsRoute
+  '/account/wallet': typeof publicAccountWalletRoute
   '/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/products/$productId': typeof publicProductsProductIdRoute
   '/admin/access/modules': typeof AdminAccessModulesRoute
@@ -695,6 +722,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings/orders': typeof AdminSettingsOrdersRoute
   '/admin/settings/retention': typeof AdminSettingsRetentionRoute
   '/admin/settings/secrets': typeof AdminSettingsSecretsRoute
+  '/admin/settings/supplier-api': typeof AdminSettingsSupplierApiRoute
   '/admin/settings/telegram': typeof AdminSettingsTelegramRoute
   '/admin/suppliers/accounts': typeof AdminSuppliersAccountsRoute
   '/admin/suppliers/orders': typeof AdminSuppliersOrdersRoute
@@ -720,6 +748,7 @@ export interface FileRoutesByFullPath {
   '/api/support/web/current': typeof ApiSupportWebCurrentRoute
   '/api/support/web/messages': typeof ApiSupportWebMessagesRoute
   '/api/support/web/status': typeof ApiSupportWebStatusRoute
+  '/api/v1/supplier/$': typeof ApiV1SupplierSplatRoute
   '/account/entitlements/': typeof publicAccountEntitlementsIndexRoute
   '/account/orders/': typeof publicAccountOrdersIndexRoute
   '/admin/products/$productId/': typeof AdminProductsProductIdIndexRoute
@@ -738,6 +767,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/install': typeof InstallRoute
+  '/openapi': typeof OpenapiRoute
   '/forgot-password': typeof authForgotPasswordRoute
   '/register': typeof authRegisterRoute
   '/sign-in': typeof authSignInRoute
@@ -765,6 +795,7 @@ export interface FileRoutesByTo {
   '/account/security': typeof publicAccountSecurityRoute
   '/account/sessions': typeof publicAccountSessionsRoute
   '/account/settings': typeof publicAccountSettingsRoute
+  '/account/wallet': typeof publicAccountWalletRoute
   '/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/products/$productId': typeof publicProductsProductIdRoute
   '/admin/access/modules': typeof AdminAccessModulesRoute
@@ -786,6 +817,7 @@ export interface FileRoutesByTo {
   '/admin/settings/orders': typeof AdminSettingsOrdersRoute
   '/admin/settings/retention': typeof AdminSettingsRetentionRoute
   '/admin/settings/secrets': typeof AdminSettingsSecretsRoute
+  '/admin/settings/supplier-api': typeof AdminSettingsSupplierApiRoute
   '/admin/settings/telegram': typeof AdminSettingsTelegramRoute
   '/admin/suppliers/accounts': typeof AdminSuppliersAccountsRoute
   '/admin/suppliers/orders': typeof AdminSuppliersOrdersRoute
@@ -811,6 +843,7 @@ export interface FileRoutesByTo {
   '/api/support/web/current': typeof ApiSupportWebCurrentRoute
   '/api/support/web/messages': typeof ApiSupportWebMessagesRoute
   '/api/support/web/status': typeof ApiSupportWebStatusRoute
+  '/api/v1/supplier/$': typeof ApiV1SupplierSplatRoute
   '/account/entitlements': typeof publicAccountEntitlementsIndexRoute
   '/account/orders': typeof publicAccountOrdersIndexRoute
   '/admin/products/$productId': typeof AdminProductsProductIdIndexRoute
@@ -833,6 +866,7 @@ export interface FileRoutesById {
   '/(public)': typeof publicRouteRouteWithChildren
   '/admin': typeof AdminRouteRouteWithChildren
   '/install': typeof InstallRoute
+  '/openapi': typeof OpenapiRoute
   '/(public)/account': typeof publicAccountRouteRouteWithChildren
   '/admin/access': typeof AdminAccessRouteRouteWithChildren
   '/admin/email': typeof AdminEmailRouteRouteWithChildren
@@ -868,6 +902,7 @@ export interface FileRoutesById {
   '/(public)/account/security': typeof publicAccountSecurityRoute
   '/(public)/account/sessions': typeof publicAccountSessionsRoute
   '/(public)/account/settings': typeof publicAccountSettingsRoute
+  '/(public)/account/wallet': typeof publicAccountWalletRoute
   '/(public)/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/(public)/products/$productId': typeof publicProductsProductIdRoute
   '/admin/access/modules': typeof AdminAccessModulesRoute
@@ -889,6 +924,7 @@ export interface FileRoutesById {
   '/admin/settings/orders': typeof AdminSettingsOrdersRoute
   '/admin/settings/retention': typeof AdminSettingsRetentionRoute
   '/admin/settings/secrets': typeof AdminSettingsSecretsRoute
+  '/admin/settings/supplier-api': typeof AdminSettingsSupplierApiRoute
   '/admin/settings/telegram': typeof AdminSettingsTelegramRoute
   '/admin/suppliers/accounts': typeof AdminSuppliersAccountsRoute
   '/admin/suppliers/orders': typeof AdminSuppliersOrdersRoute
@@ -914,6 +950,7 @@ export interface FileRoutesById {
   '/api/support/web/current': typeof ApiSupportWebCurrentRoute
   '/api/support/web/messages': typeof ApiSupportWebMessagesRoute
   '/api/support/web/status': typeof ApiSupportWebStatusRoute
+  '/api/v1/supplier/$': typeof ApiV1SupplierSplatRoute
   '/(public)/account/entitlements/': typeof publicAccountEntitlementsIndexRoute
   '/(public)/account/orders/': typeof publicAccountOrdersIndexRoute
   '/admin/products/$productId/': typeof AdminProductsProductIdIndexRoute
@@ -935,6 +972,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/admin'
     | '/install'
+    | '/openapi'
     | '/account'
     | '/admin/access'
     | '/admin/email'
@@ -970,6 +1008,7 @@ export interface FileRouteTypes {
     | '/account/security'
     | '/account/sessions'
     | '/account/settings'
+    | '/account/wallet'
     | '/orders/$orderNumber'
     | '/products/$productId'
     | '/admin/access/modules'
@@ -991,6 +1030,7 @@ export interface FileRouteTypes {
     | '/admin/settings/orders'
     | '/admin/settings/retention'
     | '/admin/settings/secrets'
+    | '/admin/settings/supplier-api'
     | '/admin/settings/telegram'
     | '/admin/suppliers/accounts'
     | '/admin/suppliers/orders'
@@ -1016,6 +1056,7 @@ export interface FileRouteTypes {
     | '/api/support/web/current'
     | '/api/support/web/messages'
     | '/api/support/web/status'
+    | '/api/v1/supplier/$'
     | '/account/entitlements/'
     | '/account/orders/'
     | '/admin/products/$productId/'
@@ -1034,6 +1075,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/install'
+    | '/openapi'
     | '/forgot-password'
     | '/register'
     | '/sign-in'
@@ -1061,6 +1103,7 @@ export interface FileRouteTypes {
     | '/account/security'
     | '/account/sessions'
     | '/account/settings'
+    | '/account/wallet'
     | '/orders/$orderNumber'
     | '/products/$productId'
     | '/admin/access/modules'
@@ -1082,6 +1125,7 @@ export interface FileRouteTypes {
     | '/admin/settings/orders'
     | '/admin/settings/retention'
     | '/admin/settings/secrets'
+    | '/admin/settings/supplier-api'
     | '/admin/settings/telegram'
     | '/admin/suppliers/accounts'
     | '/admin/suppliers/orders'
@@ -1107,6 +1151,7 @@ export interface FileRouteTypes {
     | '/api/support/web/current'
     | '/api/support/web/messages'
     | '/api/support/web/status'
+    | '/api/v1/supplier/$'
     | '/account/entitlements'
     | '/account/orders'
     | '/admin/products/$productId'
@@ -1128,6 +1173,7 @@ export interface FileRouteTypes {
     | '/(public)'
     | '/admin'
     | '/install'
+    | '/openapi'
     | '/(public)/account'
     | '/admin/access'
     | '/admin/email'
@@ -1163,6 +1209,7 @@ export interface FileRouteTypes {
     | '/(public)/account/security'
     | '/(public)/account/sessions'
     | '/(public)/account/settings'
+    | '/(public)/account/wallet'
     | '/(public)/orders/$orderNumber'
     | '/(public)/products/$productId'
     | '/admin/access/modules'
@@ -1184,6 +1231,7 @@ export interface FileRouteTypes {
     | '/admin/settings/orders'
     | '/admin/settings/retention'
     | '/admin/settings/secrets'
+    | '/admin/settings/supplier-api'
     | '/admin/settings/telegram'
     | '/admin/suppliers/accounts'
     | '/admin/suppliers/orders'
@@ -1209,6 +1257,7 @@ export interface FileRouteTypes {
     | '/api/support/web/current'
     | '/api/support/web/messages'
     | '/api/support/web/status'
+    | '/api/v1/supplier/$'
     | '/(public)/account/entitlements/'
     | '/(public)/account/orders/'
     | '/admin/products/$productId/'
@@ -1231,6 +1280,7 @@ export interface RootRouteChildren {
   publicRouteRoute: typeof publicRouteRouteWithChildren
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   InstallRoute: typeof InstallRoute
+  OpenapiRoute: typeof OpenapiRoute
   errors401Route: typeof errors401Route
   errors403Route: typeof errors403Route
   errors404Route: typeof errors404Route
@@ -1247,6 +1297,7 @@ export interface RootRouteChildren {
   ApiSupportWebCurrentRoute: typeof ApiSupportWebCurrentRoute
   ApiSupportWebMessagesRoute: typeof ApiSupportWebMessagesRoute
   ApiSupportWebStatusRoute: typeof ApiSupportWebStatusRoute
+  ApiV1SupplierSplatRoute: typeof ApiV1SupplierSplatRoute
   ApiShopOrdersOrderNumberAutomationRoute: typeof ApiShopOrdersOrderNumberAutomationRouteWithChildren
   ApiShopPaymentsChannelIdWebhookRoute: typeof ApiShopPaymentsChannelIdWebhookRoute
   ApiShopProductsProductIdCoverRoute: typeof ApiShopProductsProductIdCoverRoute
@@ -1260,6 +1311,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/openapi': {
+      id: '/openapi'
+      path: '/openapi'
+      fullPath: '/openapi'
+      preLoaderRoute: typeof OpenapiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/install': {
       id: '/install'
       path: '/install'
@@ -1596,6 +1654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSettingsTelegramRouteImport
       parentRoute: typeof AdminSettingsRouteRoute
     }
+    '/admin/settings/supplier-api': {
+      id: '/admin/settings/supplier-api'
+      path: '/supplier-api'
+      fullPath: '/admin/settings/supplier-api'
+      preLoaderRoute: typeof AdminSettingsSupplierApiRouteImport
+      parentRoute: typeof AdminSettingsRouteRoute
+    }
     '/admin/settings/secrets': {
       id: '/admin/settings/secrets'
       path: '/secrets'
@@ -1743,6 +1808,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof publicOrdersOrderNumberRouteImport
       parentRoute: typeof publicRouteRoute
     }
+    '/(public)/account/wallet': {
+      id: '/(public)/account/wallet'
+      path: '/wallet'
+      fullPath: '/account/wallet'
+      preLoaderRoute: typeof publicAccountWalletRouteImport
+      parentRoute: typeof publicAccountRouteRoute
+    }
     '/(public)/account/settings': {
       id: '/(public)/account/settings'
       path: '/settings'
@@ -1812,6 +1884,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/account/entitlements/'
       preLoaderRoute: typeof publicAccountEntitlementsIndexRouteImport
       parentRoute: typeof publicAccountRouteRoute
+    }
+    '/api/v1/supplier/$': {
+      id: '/api/v1/supplier/$'
+      path: '/api/v1/supplier/$'
+      fullPath: '/api/v1/supplier/$'
+      preLoaderRoute: typeof ApiV1SupplierSplatRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/support/web/status': {
       id: '/api/support/web/status'
@@ -1988,6 +2067,7 @@ interface publicAccountRouteRouteChildren {
   publicAccountSecurityRoute: typeof publicAccountSecurityRoute
   publicAccountSessionsRoute: typeof publicAccountSessionsRoute
   publicAccountSettingsRoute: typeof publicAccountSettingsRoute
+  publicAccountWalletRoute: typeof publicAccountWalletRoute
   publicAccountIndexRoute: typeof publicAccountIndexRoute
   publicAccountOrdersOrderNumberRoute: typeof publicAccountOrdersOrderNumberRoute
   publicAccountEntitlementsIndexRoute: typeof publicAccountEntitlementsIndexRoute
@@ -2001,6 +2081,7 @@ const publicAccountRouteRouteChildren: publicAccountRouteRouteChildren = {
   publicAccountSecurityRoute: publicAccountSecurityRoute,
   publicAccountSessionsRoute: publicAccountSessionsRoute,
   publicAccountSettingsRoute: publicAccountSettingsRoute,
+  publicAccountWalletRoute: publicAccountWalletRoute,
   publicAccountIndexRoute: publicAccountIndexRoute,
   publicAccountOrdersOrderNumberRoute: publicAccountOrdersOrderNumberRoute,
   publicAccountEntitlementsIndexRoute: publicAccountEntitlementsIndexRoute,
@@ -2132,6 +2213,7 @@ interface AdminSettingsRouteRouteChildren {
   AdminSettingsOrdersRoute: typeof AdminSettingsOrdersRoute
   AdminSettingsRetentionRoute: typeof AdminSettingsRetentionRoute
   AdminSettingsSecretsRoute: typeof AdminSettingsSecretsRoute
+  AdminSettingsSupplierApiRoute: typeof AdminSettingsSupplierApiRoute
   AdminSettingsTelegramRoute: typeof AdminSettingsTelegramRoute
   AdminSettingsIndexRoute: typeof AdminSettingsIndexRoute
 }
@@ -2144,6 +2226,7 @@ const AdminSettingsRouteRouteChildren: AdminSettingsRouteRouteChildren = {
   AdminSettingsOrdersRoute: AdminSettingsOrdersRoute,
   AdminSettingsRetentionRoute: AdminSettingsRetentionRoute,
   AdminSettingsSecretsRoute: AdminSettingsSecretsRoute,
+  AdminSettingsSupplierApiRoute: AdminSettingsSupplierApiRoute,
   AdminSettingsTelegramRoute: AdminSettingsTelegramRoute,
   AdminSettingsIndexRoute: AdminSettingsIndexRoute,
 }
@@ -2242,6 +2325,7 @@ const rootRouteChildren: RootRouteChildren = {
   publicRouteRoute: publicRouteRouteWithChildren,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   InstallRoute: InstallRoute,
+  OpenapiRoute: OpenapiRoute,
   errors401Route: errors401Route,
   errors403Route: errors403Route,
   errors404Route: errors404Route,
@@ -2258,6 +2342,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSupportWebCurrentRoute: ApiSupportWebCurrentRoute,
   ApiSupportWebMessagesRoute: ApiSupportWebMessagesRoute,
   ApiSupportWebStatusRoute: ApiSupportWebStatusRoute,
+  ApiV1SupplierSplatRoute: ApiV1SupplierSplatRoute,
   ApiShopOrdersOrderNumberAutomationRoute:
     ApiShopOrdersOrderNumberAutomationRouteWithChildren,
   ApiShopPaymentsChannelIdWebhookRoute: ApiShopPaymentsChannelIdWebhookRoute,
