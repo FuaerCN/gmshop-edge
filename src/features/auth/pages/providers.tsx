@@ -195,10 +195,8 @@ export function AuthProvidersPage() {
 				displayName: String(values.displayName ?? ""),
 				clientId: optionalString(values.clientId),
 				clientSecret: optionalString(values.clientSecret) ?? undefined,
-				clearClientSecret: formBooleanValue(values.clearClientSecret),
 				telegramMiniAppEnabled: formBooleanValue(values.telegramMiniAppEnabled),
 				telegramBotToken: optionalString(values.telegramBotToken) ?? undefined,
-				clearTelegramBotToken: formBooleanValue(values.clearTelegramBotToken),
 				scopes: Array.isArray(values.scopes) ? values.scopes.map(String) : [],
 				allowSignup: formBooleanValue(values.allowSignup),
 				passwordLoginEnabled: formBooleanValue(values.passwordLoginEnabled),
@@ -291,6 +289,8 @@ export function AuthProvidersPage() {
 					title={m.common_edit()}
 					schema={providerFormSchema({
 						callbackUrl: editing.callbackUrl,
+						hasClientSecret: editing.hasClientSecret,
+						hasTelegramToken: editing.hasTelegramToken,
 						providerId: editing.providerId,
 						providerType: editing.providerType,
 					})}
@@ -418,11 +418,15 @@ function AuthPolicyModal() {
 
 function providerFormSchema({
 	callbackUrl,
+	hasClientSecret,
+	hasTelegramToken,
 	providerId,
 	providerType,
 	preset,
 }: {
 	callbackUrl?: string | null;
+	hasClientSecret?: boolean;
+	hasTelegramToken?: boolean;
 	providerId?: string;
 	providerType?: (typeof authProviderTypes)[number];
 	preset?: ProviderPreset;
@@ -452,23 +456,23 @@ function providerFormSchema({
 			: []),
 		...(usesClientCredentials
 			? [
-					{ name: "clientId", label: m.auth_provider_client_id() },
+					{
+						name: "clientId",
+						label: m.auth_provider_client_id(),
+						description: m.auth_provider_client_id_description(),
+					},
 					...(usesSeparateClientSecret
 						? [
 								{
 									name: "clientSecret",
 									label: m.auth_provider_client_secret(),
 									valueType: "password" as const,
-									description: m.auth_provider_secret_configured(),
-								},
-							]
-						: []),
-					...(!preset && usesSeparateClientSecret
-						? [
-								{
-									name: "clearClientSecret",
-									label: m.common_delete(),
-									valueType: "switch" as const,
+									description: m.auth_provider_client_secret_description(),
+									fieldProps: {
+										placeholder: hasClientSecret
+											? m.settings_secret_configured()
+											: undefined,
+									},
 								},
 							]
 						: []),
@@ -480,21 +484,16 @@ function providerFormSchema({
 						name: "telegramBotToken",
 						label: m.telegram_bot_token(),
 						valueType: "password" as const,
-						required: Boolean(preset),
 						description: preset
 							? m.telegram_add_bot_description()
 							: m.telegram_token_preserve_description(),
+						fieldProps: {
+							placeholder: hasTelegramToken
+								? m.settings_secret_configured()
+								: undefined,
+						},
 						formItemProps: { className: "sm:col-span-2" },
 					},
-					...(!preset
-						? [
-								{
-									name: "clearTelegramBotToken",
-									label: m.common_delete(),
-									valueType: "switch" as const,
-								},
-							]
-						: []),
 					{
 						name: "telegramMiniAppEnabled",
 						label: m.auth_telegram_mini_app_enabled(),
@@ -557,10 +556,8 @@ function providerPresetValues(preset: ProviderPreset) {
 		...preset,
 		clientId: "",
 		clientSecret: "",
-		clearClientSecret: false,
 		telegramMiniAppEnabled: false,
 		telegramBotToken: "",
-		clearTelegramBotToken: false,
 		scopes: [...preset.scopes],
 		allowSignup: true,
 		passwordLoginEnabled: false,
@@ -577,10 +574,8 @@ function providerValues(provider: Provider) {
 		callbackUrl: provider.callbackUrl ?? "",
 		clientId: provider.clientId ?? "",
 		clientSecret: "",
-		clearClientSecret: false,
 		telegramMiniAppEnabled: provider.telegramMiniAppEnabled,
 		telegramBotToken: "",
-		clearTelegramBotToken: false,
 		scopes: provider.scopes,
 		allowSignup: provider.allowSignup,
 		passwordLoginEnabled: provider.passwordLoginEnabled,

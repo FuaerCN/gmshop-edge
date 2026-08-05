@@ -78,19 +78,37 @@ export const listPublicAuthProvidersFn = createServerFn({
 			(left, right) =>
 				left.sortOrder - right.sortOrder || left.id.localeCompare(right.id),
 		)
-		.map((provider) => ({
-			providerId: provider.providerId,
-			providerType: provider.providerType,
-			displayName: provider.displayName,
-			icon: provider.icon,
-			allowSignup: provider.allowSignup,
-			passwordLoginEnabled: provider.passwordLoginEnabled,
-			emailOtpEnabled: provider.emailOtpEnabled,
-			emailDeliveryEnabled: email?.enabled === 1,
-			telegramMiniAppEnabled:
+		.flatMap((provider) => {
+			const oidcEnabled = Boolean(
+				provider.clientId &&
+					state.clientSecretProviderIds.has(provider.providerId),
+			);
+			const widgetEnabled = Boolean(
 				provider.providerId === "telegram" &&
-				state.settings.telegram.miniAppEnabled,
-		}));
+					state.hasTelegramToken &&
+					state.settings.telegram.username,
+			);
+			if (provider.providerType !== "email" && !oidcEnabled && !widgetEnabled)
+				return [];
+			return [
+				{
+					providerId: provider.providerId,
+					providerType: provider.providerType,
+					displayName: provider.displayName,
+					icon: provider.icon,
+					allowSignup: provider.allowSignup,
+					passwordLoginEnabled: provider.passwordLoginEnabled,
+					emailOtpEnabled: provider.emailOtpEnabled,
+					emailDeliveryEnabled: email?.enabled === 1,
+					telegramMiniAppEnabled:
+						provider.providerId === "telegram" &&
+						state.settings.telegram.miniAppEnabled,
+					telegramOidcEnabled:
+						provider.providerId === "telegram" && oidcEnabled,
+					telegramWidgetEnabled: widgetEnabled,
+				},
+			];
+		});
 });
 
 export const setAuthProviderEnabledFn = createServerFn({ method: "POST" })
@@ -122,9 +140,13 @@ export const setAuthProviderEnabledFn = createServerFn({ method: "POST" })
 				provider.providerType === "email" && provider.emailOtpEnabled,
 			);
 			assertProviderCanBeEnabled(
-				{ ...provider, telegramMiniAppEnabled: false },
+				{
+					...provider,
+					telegramMiniAppEnabled: state.settings.telegram.miniAppEnabled,
+				},
 				state.clientSecretProviderIds.has(provider.providerId),
 				state.settings.telegram,
+				state.hasTelegramToken,
 			);
 		}
 		const now = Date.now();
@@ -247,7 +269,12 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 			state,
 		);
 		const telegram = telegramToken.metadata;
-		assertProviderCanBeEnabled(data, secret.exists, telegram);
+		assertProviderCanBeEnabled(
+			data,
+			secret.exists,
+			telegram,
+			telegramToken.exists,
+		);
 		if (data.enabled)
 			await assertEmailOtpCanBeEnabled(
 				context.db,
@@ -717,19 +744,28 @@ function assertProviderCanBeEnabled(
 	},
 	hasSecret: boolean,
 	telegram: ReturnType<typeof emptyTelegram>,
+	hasTelegramToken: boolean,
 ) {
 	if (!data.enabled || data.providerType !== "social") return;
-	if (!data.clientId || !hasSecret)
+	const oidcEnabled = Boolean(data.clientId && hasSecret);
+	if (data.providerId !== "telegram") {
+		if (oidcEnabled) return;
 		throw new DomainError(
 			"auth_email_delivery_required",
 			400,
 			"Enabled providers require a client ID and secret",
 		);
-	if (
-		data.providerId === "telegram" &&
-		data.telegramMiniAppEnabled &&
-		(!telegram.botUserId || !telegram.username)
-	)
+	}
+	const widgetEnabled = Boolean(
+		hasTelegramToken && telegram.botUserId && telegram.username,
+	);
+	if (!oidcEnabled && !widgetEnabled)
+		throw new DomainError(
+			"auth_provider_incomplete",
+			400,
+			"Telegram requires complete OIDC credentials or a verified bot token",
+		);
+	if (data.telegramMiniAppEnabled && !widgetEnabled)
 		throw new DomainError(
 			"auth_provider_incomplete",
 			400,

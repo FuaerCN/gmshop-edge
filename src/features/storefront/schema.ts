@@ -49,7 +49,7 @@ export const productIdSchema = z.object({
 
 const orderInputValueSchema = z.union([
 	z.string().max(10_000),
-	z.number().safe(),
+	z.number().int(),
 	z.boolean(),
 	z.array(z.string().max(1_000)).max(100),
 ]);

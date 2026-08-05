@@ -66,6 +66,17 @@ describe("application form system", () => {
 		}
 	});
 
+	it("keeps authentication provider credential fields aligned", () => {
+		const source = readFileSync(
+			resolve("src/features/auth/pages/providers.tsx"),
+			"utf8",
+		);
+		expect(source).toContain(
+			"description: m.auth_provider_client_id_description()",
+		);
+		expect(source).not.toMatch(/name: "clear(ClientSecret|TelegramBotToken)"/);
+	});
+
 	it("distributes localized schema errors to named sign-in fields", async () => {
 		container = document.createElement("div");
 		document.body.appendChild(container);

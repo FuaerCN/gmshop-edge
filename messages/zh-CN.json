@@ -451,6 +451,8 @@
 	"auth_providers_description": "配置邮箱、社交账号、OIDC 和 Telegram 登录方式",
 	"auth_provider_new": "添加登录方式",
 	"auth_provider_client_id": "Client ID / Bot ID",
+	"auth_provider_client_id_description": "身份验证提供商签发的 Client ID 或 Bot ID。",
+	"auth_provider_client_secret_description": "身份验证提供商签发的密钥；编辑时留空将保留当前值。",
 	"auth_provider_client_secret": "Client Secret",
 	"auth_provider_secret_configured": "已配置密钥，留空将保留原值",
 	"auth_provider_scopes": "授权范围",

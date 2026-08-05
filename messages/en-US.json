@@ -451,6 +451,8 @@
 	"auth_providers_description": "Configure email, social, OIDC and Telegram sign-in methods.",
 	"auth_provider_new": "Add login method",
 	"auth_provider_client_id": "Client ID / Bot ID",
+	"auth_provider_client_id_description": "The client or bot identifier issued by the authentication provider.",
+	"auth_provider_client_secret_description": "The secret issued by the authentication provider. Leave blank while editing to preserve the current value.",
 	"auth_provider_client_secret": "Client secret",
 	"auth_provider_secret_configured": "A secret is configured. Leave blank to preserve it.",
 	"auth_provider_scopes": "Scopes",
