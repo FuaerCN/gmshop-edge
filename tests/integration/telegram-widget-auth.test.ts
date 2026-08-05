@@ -99,7 +99,9 @@ describe("Telegram Widget fallback login", { timeout: 30_000 }, () => {
 		);
 		expect(response.status).toBe(200);
 		const body = (await response.json()) as { url: string };
-		expect(new URL(body.url).origin).toBe("https://oauth.telegram.org");
+		const url = new URL(body.url);
+		expect(url.origin).toBe("https://oauth.telegram.org");
+		expect(url.searchParams.get("origin")).toBe("https://shop.example");
 	});
 
 	it("rejects an untrusted browser origin", async () => {

@@ -207,7 +207,7 @@ describe("Telegram OIDC Better Auth login", { timeout: 30_000 }, () => {
 		const started = await startOidc(auth);
 		tokenNonce = started.url.searchParams.get("nonce") ?? "";
 		expect(tokenNonce).toHaveLength(43);
-		expect(started.url.searchParams.has("origin")).toBe(false);
+		expect(started.url.searchParams.get("origin")).toBe("https://shop.example");
 		expect(started.url.searchParams.get("redirect_uri")).toBe(
 			"https://shop.example/api/auth/callback/telegram",
 		);
