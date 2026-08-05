@@ -6,6 +6,7 @@ import { TopNav } from "#/layouts/components/top-nav";
 
 interface AppHeaderProps {
 	fixed?: boolean;
+	safeArea?: boolean;
 	topNav?: {
 		title: string;
 		href: string;
@@ -14,9 +15,13 @@ interface AppHeaderProps {
 	}[];
 }
 
-export function AppHeader({ fixed = true, topNav }: AppHeaderProps) {
+export function AppHeader({
+	fixed = true,
+	safeArea = false,
+	topNav,
+}: AppHeaderProps) {
 	return (
-		<Header fixed={fixed}>
+		<Header fixed={fixed} safeArea={safeArea}>
 			{topNav ? <TopNav links={topNav} /> : <Search />}
 			<div className="ms-auto flex items-center space-x-4">
 				{topNav ? <Search /> : null}

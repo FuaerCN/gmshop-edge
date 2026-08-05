@@ -16,15 +16,17 @@ import type { SidebarData } from "./types";
 export function AppSidebar({
 	data = { navGroups: [] },
 	homeHref = "/admin",
+	safeArea = false,
 	user,
 }: {
 	data?: SidebarData;
 	homeHref?: string;
+	safeArea?: boolean;
 	user?: AuthUser;
 }) {
 	const { collapsible, variant } = useLayout();
 	return (
-		<Sidebar collapsible={collapsible} variant={variant}>
+		<Sidebar collapsible={collapsible} safeArea={safeArea} variant={variant}>
 			<SidebarHeader className="group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:p-1">
 				<Link
 					activeOptions={{ exact: true }}

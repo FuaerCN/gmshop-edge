@@ -44,10 +44,15 @@ export function OrderTrendChart({
 		}).format(new Date(`${item.day}T00:00:00Z`)),
 	}));
 	return (
-		<ChartContainer className="h-72 w-full" config={chartConfig}>
+		<ChartContainer className="h-64 w-full sm:h-72" config={chartConfig}>
 			<ComposedChart data={formatted} accessibilityLayer>
 				<CartesianGrid strokeDasharray="3 3" vertical={false} />
-				<XAxis dataKey="label" tickLine={false} axisLine={false} />
+				<XAxis
+					axisLine={false}
+					dataKey="label"
+					minTickGap={24}
+					tickLine={false}
+				/>
 				<YAxis allowDecimals={false} tickLine={false} axisLine={false} />
 				<ChartTooltip content={<ChartTooltipContent />} />
 				<ChartLegend content={<ChartLegendContent />} />

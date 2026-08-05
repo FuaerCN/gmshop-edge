@@ -52,7 +52,7 @@ export function SalesBreakdownChart({
 		color: colors[index],
 	}));
 	return (
-		<ChartContainer className="h-64 w-full" config={chartConfig}>
+		<ChartContainer className="h-60 w-full sm:h-64" config={chartConfig}>
 			<BarChart data={data} layout="vertical" accessibilityLayer>
 				<CartesianGrid horizontal={false} strokeDasharray="3 3" />
 				<XAxis

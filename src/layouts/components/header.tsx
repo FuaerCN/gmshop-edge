@@ -5,10 +5,17 @@ import { cn } from "#/lib/utils";
 
 type HeaderProps = React.HTMLAttributes<HTMLElement> & {
 	fixed?: boolean;
+	safeArea?: boolean;
 	ref?: React.Ref<HTMLElement>;
 };
 
-export function Header({ className, fixed, children, ...props }: HeaderProps) {
+export function Header({
+	className,
+	fixed,
+	safeArea,
+	children,
+	...props
+}: HeaderProps) {
 	const [offset, setOffset] = useState(0);
 
 	useEffect(() => {
@@ -27,7 +34,8 @@ export function Header({ className, fixed, children, ...props }: HeaderProps) {
 		<header
 			className={cn(
 				"z-50 h-16",
-				fixed && "header-fixed peer/header sticky top-0 w-[inherit]",
+				fixed && "header-fixed peer/header sticky w-[inherit]",
+				fixed && (safeArea ? "top-[var(--safe-top)]" : "top-0"),
 				offset > 10 && fixed ? "shadow" : "shadow-none",
 				className,
 			)}

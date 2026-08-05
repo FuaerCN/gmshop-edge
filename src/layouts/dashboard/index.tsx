@@ -43,23 +43,31 @@ export function DashboardLayout({
 			<SearchProvider>
 				<CommandMenu />
 				<LayoutProvider>
-					<SidebarProvider defaultOpen={defaultOpen}>
+					<SidebarProvider
+						className="pt-[var(--safe-top)] pb-[var(--safe-bottom)]"
+						defaultOpen={defaultOpen}
+					>
 						<SkipToMain />
-						<AppSidebar data={navigation} homeHref={homeHref} user={user} />
+						<AppSidebar
+							data={navigation}
+							homeHref={homeHref}
+							safeArea
+							user={user}
+						/>
 						<SidebarInset
 							className={cn(
 								"@container/content overflow-x-hidden outline-none",
 								pageScroll
-									? "min-h-svh"
+									? "min-h-[calc(100svh-var(--safe-top)-var(--safe-bottom))]"
 									: [
-											"overflow-hidden has-data-[layout=fixed]:h-svh",
-											"peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-(var(--spacing)*4))]",
+											"overflow-hidden has-data-[layout=fixed]:h-[calc(100svh-var(--safe-top)-var(--safe-bottom))]",
+											"peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-var(--safe-top)-var(--safe-bottom)-(var(--spacing)*4))]",
 										],
 							)}
 							id="content"
 							tabIndex={-1}
 						>
-							<AppHeader />
+							<AppHeader safeArea />
 							{children ?? <Outlet />}
 						</SidebarInset>
 					</SidebarProvider>

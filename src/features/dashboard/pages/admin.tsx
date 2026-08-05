@@ -177,8 +177,8 @@ function DashboardContent({ days }: { days: 1 | 7 | 30 | 90 }) {
 				</div>
 			</section>
 
-			<section className="grid gap-4 xl:grid-cols-2">
-				<div className="min-w-0 rounded-xl border bg-card p-5 shadow-sm">
+			<section className="grid min-w-0 gap-4 xl:grid-cols-2">
+				<div className="min-w-0 rounded-xl border bg-card p-4 shadow-sm sm:p-5">
 					<h2 className="font-semibold text-xl">
 						{m.payment_dashboard_order_trend()}
 					</h2>
@@ -187,17 +187,21 @@ function DashboardContent({ days }: { days: 1 | 7 | 30 | 90 }) {
 					</p>
 					<div className="mt-5">
 						<ClientOnly
-							fallback={<div className="h-72 animate-pulse bg-muted/50" />}
+							fallback={
+								<div className="h-64 animate-pulse bg-muted/50 sm:h-72" />
+							}
 						>
 							<Suspense
-								fallback={<div className="h-72 animate-pulse bg-muted/50" />}
+								fallback={
+									<div className="h-64 animate-pulse bg-muted/50 sm:h-72" />
+								}
 							>
 								<OrderTrendChart data={data.dailyOrders} />
 							</Suspense>
 						</ClientOnly>
 					</div>
 				</div>
-				<div className="rounded-xl border bg-card p-5 shadow-sm">
+				<div className="min-w-0 rounded-xl border bg-card p-4 shadow-sm sm:p-5">
 					<h2 className="font-semibold text-xl">
 						{m.dashboard_sales_breakdown()}
 					</h2>
@@ -209,10 +213,14 @@ function DashboardContent({ days }: { days: 1 | 7 | 30 | 90 }) {
 					<div className="mt-4">
 						{sales ? (
 							<ClientOnly
-								fallback={<div className="h-64 animate-pulse bg-muted/50" />}
+								fallback={
+									<div className="h-60 animate-pulse bg-muted/50 sm:h-64" />
+								}
 							>
 								<Suspense
-									fallback={<div className="h-64 animate-pulse bg-muted/50" />}
+									fallback={
+										<div className="h-60 animate-pulse bg-muted/50 sm:h-64" />
+									}
 								>
 									<SalesBreakdownChart sale={sales} />
 								</Suspense>
