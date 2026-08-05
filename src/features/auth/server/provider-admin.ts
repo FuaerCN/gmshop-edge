@@ -17,9 +17,10 @@ import {
 	parseAuthProviderSettings,
 	type StoredAuthProvider,
 	storedAuthProvidersSchema,
+	telegramBotTokenSecretPurpose,
 } from "#/features/auth/provider-settings";
 import { DomainError } from "#/lib/domain-error";
-import { encryptSecret } from "#/lib/secrets";
+import { decryptSecret, encryptSecret } from "#/lib/secrets";
 import { createAuditStatement } from "#/server/audit";
 import {
 	configurationLogoInputSchema,
@@ -46,7 +47,7 @@ export const listAuthProvidersFn = createServerFn({ method: "GET" }).handler(
 				.map((provider) =>
 					presentProvider(
 						provider,
-						state.secretProviderIds.has(provider.providerId),
+						state.clientSecretProviderIds.has(provider.providerId),
 						state.settings,
 						state.updatedAt,
 						context.runtime.betterAuthUrl ||
@@ -122,7 +123,7 @@ export const setAuthProviderEnabledFn = createServerFn({ method: "POST" })
 			);
 			assertProviderCanBeEnabled(
 				{ ...provider, telegramMiniAppEnabled: false },
-				state.secretProviderIds.has(provider.providerId),
+				state.clientSecretProviderIds.has(provider.providerId),
 				state.settings.telegram,
 			);
 		}
@@ -237,14 +238,15 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 			context,
 			data,
 			before,
-			state.secretProviderIds,
+			state.clientSecretProviderIds,
 		);
-		const telegram = await resolveTelegramMetadata(
+		const telegramToken = await resolveTelegramToken(
+			context,
 			data,
 			before,
-			state.settings.telegram,
-			secret.plaintext,
+			state,
 		);
+		const telegram = telegramToken.metadata;
 		assertProviderCanBeEnabled(data, secret.exists, telegram);
 		if (data.enabled)
 			await assertEmailOtpCanBeEnabled(
@@ -285,16 +287,24 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 			),
 			bumpProvidersRevision(context.db, now),
 			...secret.statements,
+			...telegramToken.statements,
 			...(data.providerId === "telegram" || before?.providerId === "telegram"
 				? telegramSettingStatements(context.db, telegram, now)
 				: []),
 		];
-		if (before && before.providerId !== data.providerId)
+		if (before && before.providerId !== data.providerId) {
 			statements.push(
 				context.db
 					.prepare("DELETE FROM system_settings WHERE key = ?")
 					.bind(authProviderSecretKey(before.providerId)),
 			);
+			if (before.providerId === "telegram")
+				statements.push(
+					context.db
+						.prepare("DELETE FROM system_settings WHERE key = ?")
+						.bind(authProviderSettingKeys.telegramBotToken),
+				);
+		}
 		statements.push(
 			createAuditStatement(context.db, context.request, context.user.id, {
 				action: before ? "auth_provider.updated" : "auth_provider.created",
@@ -304,7 +314,7 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 					? {
 							providerId: before.providerId,
 							enabled: before.enabled,
-							hasSecret: state.secretProviderIds.has(before.providerId),
+							hasSecret: state.clientSecretProviderIds.has(before.providerId),
 						}
 					: null,
 				after: {
@@ -312,6 +322,7 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 					providerType: provider.providerType,
 					enabled: provider.enabled,
 					hasSecret: secret.exists,
+					hasTelegramToken: telegramToken.exists,
 					telegramMiniAppEnabled: telegram.miniAppEnabled,
 				},
 			}),
@@ -449,6 +460,9 @@ export const deleteAuthProviderFn = createServerFn({ method: "POST" })
 		];
 		if (provider.providerId === "telegram")
 			statements.push(
+				context.db
+					.prepare("DELETE FROM system_settings WHERE key = ?")
+					.bind(authProviderSettingKeys.telegramBotToken),
 				...telegramSettingStatements(context.db, emptyTelegram(), now),
 			);
 		statements.push(
@@ -459,7 +473,7 @@ export const deleteAuthProviderFn = createServerFn({ method: "POST" })
 				before: {
 					providerId: provider.providerId,
 					enabled: provider.enabled,
-					hasSecret: state.secretProviderIds.has(provider.providerId),
+					hasSecret: state.clientSecretProviderIds.has(provider.providerId),
 				},
 			}),
 		);
@@ -474,27 +488,45 @@ async function loadProviderState(db: D1Database) {
 	const rows = await db
 		.prepare(
 			`SELECT key, value, updated_at FROM system_settings
-			 WHERE key IN (?, ?, ?, ?, ?)
+			 WHERE key IN (?, ?, ?, ?, ?, ?)
 			    OR (key LIKE 'auth.provider.%.secret' AND is_secret = 1)`,
 		)
 		.bind(
 			authProviderSettingKeys.providers,
 			authProviderSettingKeys.revision,
 			authProviderSettingKeys.telegramBotUserId,
+			authProviderSettingKeys.telegramBotToken,
 			authProviderSettingKeys.telegramUsername,
 			authProviderSettingKeys.telegramMiniAppEnabled,
 		)
 		.all<{ key: string; value: string; updated_at: number }>();
+	const settings = parseAuthProviderSettings(rows.results);
+	const secretProviderIds = new Set(
+		rows.results.flatMap((row) => {
+			const match = /^auth\.provider\.([a-z][a-z0-9_-]{1,63})\.secret$/.exec(
+				row.key,
+			);
+			return match?.[1] ? [match[1]] : [];
+		}),
+	);
+	const encryptedValues = new Map(
+		rows.results.map((row) => [row.key, row.value]),
+	);
+	const hasDedicatedTelegramToken = encryptedValues.has(
+		authProviderSettingKeys.telegramBotToken,
+	);
+	const hasLegacyTelegramToken =
+		!hasDedicatedTelegramToken &&
+		secretProviderIds.has("telegram") &&
+		Boolean(settings.telegram.botUserId && settings.telegram.username);
+	const clientSecretProviderIds = new Set(secretProviderIds);
+	if (hasLegacyTelegramToken) clientSecretProviderIds.delete("telegram");
 	return {
-		settings: parseAuthProviderSettings(rows.results),
-		secretProviderIds: new Set(
-			rows.results.flatMap((row) => {
-				const match = /^auth\.provider\.([a-z][a-z0-9_-]{1,63})\.secret$/.exec(
-					row.key,
-				);
-				return match?.[1] ? [match[1]] : [];
-			}),
-		),
+		settings,
+		clientSecretProviderIds,
+		encryptedValues,
+		hasLegacyTelegramToken,
+		hasTelegramToken: hasDedicatedTelegramToken || hasLegacyTelegramToken,
 		updatedAt: Math.max(0, ...rows.results.map((row) => row.updated_at)),
 	};
 }
@@ -508,23 +540,18 @@ async function resolveProviderSecret(
 	if (data.providerType !== "social" || data.clearClientSecret)
 		return {
 			exists: false,
-			plaintext: null,
 			statements: [
 				context.db
 					.prepare("DELETE FROM system_settings WHERE key = ?")
 					.bind(authProviderSecretKey(data.providerId)),
 			],
 		};
-	const replacement =
-		data.providerId === "telegram"
-			? (data.telegramBotToken ?? data.clientSecret)
-			: data.clientSecret;
+	const replacement = data.clientSecret;
 	const exists =
 		Boolean(replacement) ||
 		(before?.providerId === data.providerId &&
 			secretProviderIds.has(data.providerId));
-	if (!replacement)
-		return { exists, plaintext: null, statements: [] as D1PreparedStatement[] };
+	if (!replacement) return { exists, statements: [] as D1PreparedStatement[] };
 	if (!context.runtime.authProviderSecret)
 		throw new DomainError(
 			"auth_provider_secret_unavailable",
@@ -538,7 +565,6 @@ async function resolveProviderSecret(
 	);
 	return {
 		exists: true,
-		plaintext: replacement,
 		statements: [
 			upsertSetting(
 				context.db,
@@ -551,33 +577,102 @@ async function resolveProviderSecret(
 	};
 }
 
-async function resolveTelegramMetadata(
+async function resolveTelegramToken(
+	context: Awaited<ReturnType<typeof adminContext>>,
 	data: z.output<typeof authProviderInputSchema>,
 	before: StoredAuthProvider | undefined,
-	current: ReturnType<typeof parseAuthProviderSettings>["telegram"],
-	replacementSecret: string | null,
+	state: Awaited<ReturnType<typeof loadProviderState>>,
 ) {
-	if (data.providerId !== "telegram") return emptyTelegram();
-	if (replacementSecret) {
-		const identity = await verifyTelegramAuthToken(replacementSecret);
+	if (data.providerId !== "telegram")
 		return {
-			botUserId: identity.id,
-			username: identity.username,
-			miniAppEnabled: data.telegramMiniAppEnabled,
+			exists: false,
+			metadata: emptyTelegram(),
+			statements: [] as D1PreparedStatement[],
+		};
+	if (data.clearTelegramBotToken)
+		return {
+			exists: false,
+			metadata: emptyTelegram(),
+			statements: [
+				context.db
+					.prepare("DELETE FROM system_settings WHERE key = ?")
+					.bind(authProviderSettingKeys.telegramBotToken),
+			],
+		};
+
+	let token = data.telegramBotToken ?? null;
+	let identity: { id: string; username: string } | null = null;
+	if (token) identity = await verifyTelegramAuthToken(token);
+	else if (state.hasLegacyTelegramToken) {
+		const encrypted = state.encryptedValues.get(
+			authProviderSecretKey("telegram"),
+		);
+		if (
+			encrypted &&
+			context.runtime.authProviderSecret &&
+			state.settings.telegram.botUserId &&
+			state.settings.telegram.username
+		) {
+			token = await decryptSecret(
+				encrypted,
+				context.runtime.authProviderSecret,
+				authProviderSecretPurpose("telegram"),
+			);
+			identity = {
+				id: state.settings.telegram.botUserId,
+				username: state.settings.telegram.username,
+			};
+		}
+	}
+	if (token && identity) {
+		if (!context.runtime.authProviderSecret)
+			throw new DomainError(
+				"auth_provider_secret_unavailable",
+				503,
+				"Authentication provider encryption is unavailable",
+			);
+		const encrypted = await encryptSecret(
+			token,
+			context.runtime.authProviderSecret,
+			telegramBotTokenSecretPurpose(),
+		);
+		return {
+			exists: true,
+			metadata: {
+				botUserId: identity.id,
+				username: identity.username,
+				miniAppEnabled: data.telegramMiniAppEnabled,
+			},
+			statements: [
+				upsertSetting(
+					context.db,
+					authProviderSettingKeys.telegramBotToken,
+					encrypted,
+					Date.now(),
+					true,
+				),
+			],
 		};
 	}
 	if (
 		data.telegramMiniAppEnabled &&
 		(before?.providerId !== "telegram" ||
-			!current.botUserId ||
-			!current.username)
+			!state.settings.telegram.botUserId ||
+			!state.settings.telegram.username)
 	)
 		throw new DomainError(
 			"telegram_bot_token_required",
 			400,
 			"Telegram token is required for Mini App authentication",
 		);
-	return { ...current, miniAppEnabled: data.telegramMiniAppEnabled };
+	return {
+		exists: state.hasTelegramToken,
+		metadata: {
+			...state.settings.telegram,
+			miniAppEnabled: data.telegramMiniAppEnabled,
+		},
+		statements: [] as D1PreparedStatement[],
+	};
 }
 
 async function verifyTelegramAuthToken(token: string) {
@@ -594,7 +689,7 @@ async function verifyTelegramAuthToken(token: string) {
 		.object({
 			ok: z.literal(true),
 			result: z.object({
-				id: z.union([z.number().int().safe(), z.string().regex(/^\d{1,20}$/)]),
+				id: z.union([z.number().int(), z.string().regex(/^\d{1,20}$/)]),
 				is_bot: z.literal(true),
 				username: z.string().trim().min(1).max(64),
 			}),
@@ -669,7 +764,7 @@ function presentProvider(
 		hasClientSecret: hasSecret,
 		telegramBotUserId: telegram ? settings.telegram.botUserId : null,
 		telegramUsername: telegram ? settings.telegram.username : null,
-		hasTelegramToken: telegram && hasSecret,
+		hasTelegramToken: telegram && settings.telegram.botUserId !== null,
 		telegramMiniAppEnabled: telegram && settings.telegram.miniAppEnabled,
 		revision: settings.revision,
 		createdAt: updatedAt,

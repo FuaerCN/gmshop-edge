@@ -51,10 +51,13 @@ administration console.
 - Quote customer-selected fiat currencies from store-owned D1 exchange rates and
   pass one immutable quote to Stripe, GMpay, EPay, or another typed adapter.
 - Configure email/password, social, OIDC, and Telegram authentication providers
-  at runtime through Better Auth without rebuilding the Worker. Telegram Mini
-  Apps use verified `initData` for automatic sign-up/sign-in, request full
-  screen through `@tma.js/sdk`, and import a missing Telegram avatar. Telegram
-  users can bind a verified email independently from setting a password.
+  at runtime through Better Auth without rebuilding the Worker. Telegram web
+  login supports both OIDC code callbacks and verified `#tgAuthResult` Widget
+  fallback while storing the OIDC client secret separately from the Bot Token.
+  Telegram Mini Apps use verified `initData` for automatic sign-up/sign-in,
+  request full screen through `@tma.js/sdk`, and import a missing Telegram
+  avatar. Telegram users can bind a verified email independently from setting
+  a password.
 - Synchronize a grammY webhook bot with localized shop commands and fixed Mini
   App buttons. Optional customer support maps each Telegram user to a Forum
   Topic, forwards messages in both directions without storing their content,

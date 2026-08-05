@@ -198,6 +198,7 @@ export function AuthProvidersPage() {
 				clearClientSecret: formBooleanValue(values.clearClientSecret),
 				telegramMiniAppEnabled: formBooleanValue(values.telegramMiniAppEnabled),
 				telegramBotToken: optionalString(values.telegramBotToken) ?? undefined,
+				clearTelegramBotToken: formBooleanValue(values.clearTelegramBotToken),
 				scopes: Array.isArray(values.scopes) ? values.scopes.map(String) : [],
 				allowSignup: formBooleanValue(values.allowSignup),
 				passwordLoginEnabled: formBooleanValue(values.passwordLoginEnabled),
@@ -429,8 +430,7 @@ function providerFormSchema({
 	const type = preset?.providerType ?? providerType;
 	const resolvedProviderId = preset?.providerId ?? providerId;
 	const usesClientCredentials = type === "social";
-	const usesSeparateClientSecret =
-		usesClientCredentials && resolvedProviderId !== "telegram";
+	const usesSeparateClientSecret = usesClientCredentials;
 	const scopeOptions = providerScopeOptions(resolvedProviderId);
 	const usesScopes = type === "social" && scopeOptions.length > 0;
 	return [
@@ -486,6 +486,15 @@ function providerFormSchema({
 							: m.telegram_token_preserve_description(),
 						formItemProps: { className: "sm:col-span-2" },
 					},
+					...(!preset
+						? [
+								{
+									name: "clearTelegramBotToken",
+									label: m.common_delete(),
+									valueType: "switch" as const,
+								},
+							]
+						: []),
 					{
 						name: "telegramMiniAppEnabled",
 						label: m.auth_telegram_mini_app_enabled(),
@@ -551,6 +560,7 @@ function providerPresetValues(preset: ProviderPreset) {
 		clearClientSecret: false,
 		telegramMiniAppEnabled: false,
 		telegramBotToken: "",
+		clearTelegramBotToken: false,
 		scopes: [...preset.scopes],
 		allowSignup: true,
 		passwordLoginEnabled: false,
@@ -570,6 +580,7 @@ function providerValues(provider: Provider) {
 		clearClientSecret: false,
 		telegramMiniAppEnabled: provider.telegramMiniAppEnabled,
 		telegramBotToken: "",
+		clearTelegramBotToken: false,
 		scopes: provider.scopes,
 		allowSignup: provider.allowSignup,
 		passwordLoginEnabled: provider.passwordLoginEnabled,

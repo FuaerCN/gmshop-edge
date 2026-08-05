@@ -3,7 +3,7 @@ import { z } from "zod";
 const encoder = new TextEncoder();
 
 const telegramUserSchema = z.object({
-	id: z.union([z.number().int().safe(), z.string().regex(/^\d{1,20}$/)]),
+	id: z.union([z.number().int(), z.string().regex(/^\d{1,20}$/)]),
 	is_bot: z.boolean().optional(),
 	first_name: z.string().trim().min(1).max(256),
 	last_name: z.string().trim().max(256).optional(),

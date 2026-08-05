@@ -8,6 +8,7 @@ import {
 	authProviderSecretPurpose,
 	authProviderSettingKeys,
 	initialStoredAuthProviders,
+	telegramBotTokenSecretPurpose,
 } from "#/features/auth/provider-settings";
 import { createAuth } from "#/features/auth/server/auth-factory";
 import { loadRuntimeAuthProviders } from "#/features/auth/server/provider-runtime";
@@ -26,6 +27,7 @@ describe("Telegram OIDC Better Auth login", { timeout: 30_000 }, () => {
 	const runtime = createInitialRuntimeConfig("https://shop.example");
 	const clientId = "123456789";
 	const clientSecret = "telegram-oidc-client-secret";
+	const botToken = "123456:telegram-widget-token-value";
 	let telegramUserId = "987654321";
 	let telegramPicture = "https://cdn.example/telegram-oidc-avatar.jpg";
 
@@ -134,16 +136,65 @@ describe("Telegram OIDC Better Auth login", { timeout: 30_000 }, () => {
 					now,
 					now,
 				),
+			database
+				.prepare(
+					`INSERT OR REPLACE INTO system_settings
+				 (key, value, is_secret, created_at, updated_at)
+				 VALUES (?, ?, 1, ?, ?)`,
+				)
+				.bind(
+					authProviderSettingKeys.telegramBotToken,
+					JSON.stringify(
+						await encryptSecret(
+							botToken,
+							runtime.authProviderSecret,
+							telegramBotTokenSecretPurpose(),
+						),
+					),
+					now,
+					now,
+				),
+			database
+				.prepare(
+					`INSERT OR REPLACE INTO system_settings
+				 (key, value, is_secret, created_at, updated_at)
+				 VALUES (?, ?, 0, ?, ?)`,
+				)
+				.bind(
+					authProviderSettingKeys.telegramBotUserId,
+					JSON.stringify("123456"),
+					now,
+					now,
+				),
+			database
+				.prepare(
+					`INSERT OR REPLACE INTO system_settings
+				 (key, value, is_secret, created_at, updated_at)
+				 VALUES (?, ?, 0, ?, ?)`,
+				)
+				.bind(
+					authProviderSettingKeys.telegramUsername,
+					JSON.stringify("gmshop_test_bot"),
+					now,
+					now,
+				),
 		]);
+		const runtimeProviders = await loadRuntimeAuthProviders(
+			database,
+			runtime.authProviderSecret,
+			runtime.integrationConfigSecret,
+		);
+		expect(
+			runtimeProviders.find((provider) => provider.providerId === "telegram"),
+		).toMatchObject({
+			clientSecret,
+			telegramBotToken: botToken,
+		});
 		auth = createAuth(drizzle(database, { schema }), {
 			BETTER_AUTH_SECRET: runtime.betterAuthSecret,
 			BETTER_AUTH_URL: runtime.betterAuthUrl,
 			AUTH_PROVIDER_SECRET: runtime.authProviderSecret,
-			AUTH_PROVIDERS: await loadRuntimeAuthProviders(
-				database,
-				runtime.authProviderSecret,
-				runtime.integrationConfigSecret,
-			),
+			AUTH_PROVIDERS: runtimeProviders,
 		});
 	});
 

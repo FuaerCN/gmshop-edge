@@ -9,9 +9,14 @@ export const authProviderSettingKeys = {
 	providers: "auth.providers",
 	revision: "auth.providers_revision",
 	telegramBotUserId: "auth.telegram.bot_user_id",
+	telegramBotToken: "auth.telegram.bot_token",
 	telegramUsername: "auth.telegram.username",
 	telegramMiniAppEnabled: "auth.telegram.mini_app_enabled",
 } as const;
+
+export function telegramBotTokenSecretPurpose() {
+	return "auth-provider:telegram-bot-token";
+}
 
 export const storedAuthProviderSchema = z
 	.object({

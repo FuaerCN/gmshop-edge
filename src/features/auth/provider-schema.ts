@@ -39,6 +39,7 @@ export const authProviderInputSchema = z
 			.trim()
 			.regex(/^\d{5,20}:[A-Za-z0-9_-]{20,200}$/)
 			.optional(),
+		clearTelegramBotToken: z.boolean().default(false),
 		scopes: z
 			.array(z.string().trim().min(1).max(100))
 			.max(20)
@@ -110,8 +111,19 @@ export const authProviderInputSchema = z
 				message: "A secret cannot be replaced and cleared together",
 			});
 		}
+		if (value.clearTelegramBotToken && value.telegramBotToken) {
+			context.addIssue({
+				code: "custom",
+				path: ["telegramBotToken"],
+				message: "A Telegram bot token cannot be replaced and cleared together",
+			});
+		}
 		if (value.providerId !== "telegram") {
-			if (value.telegramMiniAppEnabled || value.telegramBotToken)
+			if (
+				value.telegramMiniAppEnabled ||
+				value.telegramBotToken ||
+				value.clearTelegramBotToken
+			)
 				context.addIssue({
 					code: "custom",
 					path: ["telegramMiniAppEnabled"],

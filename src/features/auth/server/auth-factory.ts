@@ -23,6 +23,10 @@ import {
 	TelegramMiniAppAuthError,
 	verifyTelegramMiniAppInitData,
 } from "#/features/auth/server/telegram-mini-app";
+import {
+	telegramWidgetAuthDataSchema,
+	verifyTelegramWidgetAuthData,
+} from "#/features/auth/telegram-widget";
 import { enqueueConfiguredEmailNotification } from "#/features/notifications/server/delivery";
 import { DomainError } from "#/lib/domain-error";
 import { m } from "#/paraglide/messages";
@@ -243,13 +247,13 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 						});
 				}
 				if (ctx.path === "/telegram/miniapp/signin") {
-					const origin = ctx.headers?.get("origin");
-					if (!origin || !trustedOrigins.includes(origin))
-						throw APIError.from("FORBIDDEN", {
-							code: "UNTRUSTED_ORIGIN",
-							message: "The request origin is not trusted",
-						});
+					assertTrustedTelegramOrigin(ctx, trustedOrigins);
 					await reserveTelegramMiniAppReplay(ctx, telegramOidcProvider);
+					return;
+				}
+				if (ctx.path === "/telegram/signin") {
+					assertTrustedTelegramOrigin(ctx, trustedOrigins);
+					await reserveTelegramWidgetReplay(ctx, telegramOidcProvider);
 					return;
 				}
 				if (ctx.path !== "/unlink-account") return;
@@ -286,6 +290,8 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 						telegramOidcProvider,
 						db.$client,
 					);
+				if (ctx.path === "/telegram/signin")
+					await backfillTelegramWidgetImage(ctx, db.$client);
 				const action = securityAuditAction(ctx.path);
 				if (!action) return;
 				const userId =
@@ -364,18 +370,25 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 						}),
 					]
 				: []),
-			...(telegramOidcProvider?.telegramMiniAppEnabled &&
-			telegramOidcProvider.telegramBotToken &&
+			...(telegramOidcProvider?.telegramBotToken &&
 			telegramOidcProvider.telegramBotUsername
 				? [
 						telegram({
 							botToken: telegramOidcProvider.telegramBotToken,
 							botUsername: telegramOidcProvider.telegramBotUsername,
-							loginWidget: false,
+							loginWidget: true,
 							autoCreateUser: telegramOidcProvider.allowSignup,
 							maxAuthAge: 300,
+							mapTelegramDataToUser: (user) => ({
+								name:
+									[user.first_name, user.last_name].filter(Boolean).join(" ") ||
+									user.username ||
+									`Telegram ${user.id}`,
+								email: telegramIdentityEmail(String(user.id)),
+								image: telegramProfileImage(user.photo_url),
+							}),
 							miniApp: {
-								enabled: true,
+								enabled: telegramOidcProvider.telegramMiniAppEnabled,
 								validateInitData: true,
 								allowAutoSignin: telegramOidcProvider.allowSignup,
 								mapMiniAppDataToUser: (user) => ({
@@ -400,6 +413,51 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 			tanstackStartCookies(),
 		],
 	});
+}
+
+function assertTrustedTelegramOrigin(
+	ctx: GenericEndpointContext,
+	trustedOrigins: string[],
+) {
+	const origin = ctx.headers?.get("origin");
+	if (!origin || !trustedOrigins.includes(origin))
+		throw APIError.from("FORBIDDEN", {
+			code: "UNTRUSTED_ORIGIN",
+			message: "The request origin is not trusted",
+		});
+}
+
+async function reserveTelegramWidgetReplay(
+	ctx: GenericEndpointContext,
+	provider: RuntimeAuthProvider | undefined,
+) {
+	if (!provider?.telegramBotToken)
+		throw APIError.from("NOT_FOUND", {
+			code: "AUTH_PROVIDER_UNAVAILABLE",
+			message: "Authentication provider is unavailable",
+		});
+	const parsed = telegramWidgetAuthDataSchema.safeParse(ctx.body);
+	if (!parsed.success) return;
+	const verified = await verifyTelegramWidgetAuthData(
+		parsed.data,
+		provider.telegramBotToken,
+		{ maxAgeMs: 300_000 },
+	);
+	if (!verified)
+		throw APIError.from("UNAUTHORIZED", {
+			code: "TELEGRAM_AUTH_INVALID",
+			message: "Telegram authentication is invalid or expired",
+		});
+	const reserved = await ctx.context.internalAdapter.reserveVerificationValue({
+		identifier: `telegram-widget:${verified.replayDigest}`,
+		value: provider.id,
+		expiresAt: new Date(verified.authenticatedAt + 300_000),
+	});
+	if (!reserved)
+		throw APIError.from("UNAUTHORIZED", {
+			code: "TELEGRAM_AUTH_REPLAYED",
+			message: "Telegram authentication is invalid or expired",
+		});
 }
 
 async function reserveTelegramMiniAppReplay(
@@ -472,6 +530,28 @@ async function backfillTelegramMiniAppImage(
 	} catch (error) {
 		if (!(error instanceof TelegramMiniAppAuthError)) throw error;
 	}
+}
+
+async function backfillTelegramWidgetImage(
+	ctx: GenericEndpointContext,
+	database: D1Database,
+) {
+	const parsed = telegramWidgetAuthDataSchema.safeParse(ctx.body);
+	const image = parsed.success
+		? telegramProfileImage(parsed.data.photo_url)
+		: undefined;
+	if (!image) return;
+	const userId =
+		securityAuditUserId(ctx.context) ??
+		(await getSessionFromCtx(ctx).catch(() => null))?.user.id;
+	if (!userId) return;
+	await database
+		.prepare(
+			`UPDATE users SET image = ?, updated_at = ?
+			 WHERE id = ? AND image IS NULL`,
+		)
+		.bind(image, Date.now(), userId)
+		.run();
 }
 
 function telegramOidcBetterAuthPlugin(
@@ -657,6 +737,7 @@ function createSocialProviders(
 function securityAuditAction(path: string) {
 	return (
 		{
+			"/telegram/signin": "auth.telegram_widget_signed_in",
 			"/telegram/miniapp/signin": "auth.telegram_mini_app_signed_in",
 			"/sign-in/email": "auth.signed_in",
 			"/sign-in/email-otp": "auth.email_otp_signed_in",
@@ -706,6 +787,7 @@ function authenticationFailureAction(path: string) {
 			"/sign-in/email-otp": "auth.email_otp_sign_in_failed",
 			"/change-email": "auth.email_change_failed",
 			"/telegram/miniapp/signin": "auth.telegram_mini_app_failed",
+			"/telegram/signin": "auth.telegram_widget_failed",
 		}[path] ?? null
 	);
 }

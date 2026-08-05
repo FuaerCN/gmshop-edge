@@ -4,6 +4,7 @@ import {
 	authProviderSecretPurpose,
 	authProviderSettingKeys,
 	parseAuthProviderSettings,
+	telegramBotTokenSecretPurpose,
 } from "../provider-settings";
 
 export type RuntimeAuthProvider = {
@@ -32,13 +33,14 @@ export async function loadRuntimeAuthProviders(
 	const rows = await database
 		.prepare(
 			`SELECT key, value FROM system_settings
-			 WHERE key IN (?, ?, ?, ?, ?)
+			 WHERE key IN (?, ?, ?, ?, ?, ?)
 			    OR (key LIKE 'auth.provider.%.secret' AND is_secret = 1)`,
 		)
 		.bind(
 			authProviderSettingKeys.providers,
 			authProviderSettingKeys.revision,
 			authProviderSettingKeys.telegramBotUserId,
+			authProviderSettingKeys.telegramBotToken,
 			authProviderSettingKeys.telegramUsername,
 			authProviderSettingKeys.telegramMiniAppEnabled,
 		)
@@ -70,13 +72,30 @@ export async function loadRuntimeAuthProviders(
 						)
 					: null;
 				const telegram = provider.providerId === "telegram";
+				const configuredBotToken = telegram
+					? rawValues.get(authProviderSettingKeys.telegramBotToken)
+					: undefined;
+				if (
+					configuredBotToken !== undefined &&
+					typeof configuredBotToken !== "string"
+				)
+					throw new Error("Telegram bot token is invalid");
+				const botToken = configuredBotToken
+					? await decryptSecret(
+							configuredBotToken,
+							authProviderSecret,
+							telegramBotTokenSecretPurpose(),
+						)
+					: telegram && isTelegramBotToken(secret)
+						? secret
+						: null;
 				return {
 					id: provider.id,
 					providerId: provider.providerId,
 					providerType: provider.providerType,
 					displayName: provider.displayName,
 					clientId: provider.clientId,
-					clientSecret: secret,
+					clientSecret: telegram && isTelegramBotToken(secret) ? null : secret,
 					scopes: provider.scopes,
 					allowSignup: provider.allowSignup,
 					passwordLoginEnabled: provider.passwordLoginEnabled,
@@ -84,11 +103,15 @@ export async function loadRuntimeAuthProviders(
 					revision: settings.revision,
 					telegramBotUserId: telegram ? settings.telegram.botUserId : null,
 					telegramBotUsername: telegram ? settings.telegram.username : null,
-					telegramBotToken: telegram ? secret : null,
+					telegramBotToken: botToken,
 					telegramMiniAppEnabled: telegram && settings.telegram.miniAppEnabled,
 				};
 			}),
 	);
+}
+
+function isTelegramBotToken(value: string | null) {
+	return /^\d{5,20}:[A-Za-z0-9_-]{20,200}$/.test(value ?? "");
 }
 
 export function authProviderRevisionSignature(
