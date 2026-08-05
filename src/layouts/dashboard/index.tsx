@@ -44,7 +44,7 @@ export function DashboardLayout({
 				<CommandMenu />
 				<LayoutProvider>
 					<SidebarProvider
-						className="pt-[var(--safe-top)] pb-[var(--safe-bottom)]"
+						className="pb-[var(--safe-bottom)]"
 						defaultOpen={defaultOpen}
 					>
 						<SkipToMain />
@@ -58,10 +58,10 @@ export function DashboardLayout({
 							className={cn(
 								"@container/content overflow-x-hidden outline-none",
 								pageScroll
-									? "min-h-[calc(100svh-var(--safe-top)-var(--safe-bottom))]"
+									? "min-h-[calc(100svh-var(--safe-bottom))]"
 									: [
-											"overflow-hidden has-data-[layout=fixed]:h-[calc(100svh-var(--safe-top)-var(--safe-bottom))]",
-											"peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-var(--safe-top)-var(--safe-bottom)-(var(--spacing)*4))]",
+											"overflow-hidden has-data-[layout=fixed]:h-[calc(100svh-var(--safe-bottom))]",
+											"peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-var(--safe-bottom)-(var(--spacing)*4))]",
 										],
 							)}
 							id="content"

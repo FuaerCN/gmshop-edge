@@ -33,9 +33,12 @@ export function Header({
 	return (
 		<header
 			className={cn(
-				"z-50 h-16",
+				"z-50",
+				safeArea
+					? "h-[calc(4rem+var(--safe-top))] pt-[var(--safe-top)]"
+					: "h-16",
 				fixed && "header-fixed peer/header sticky w-[inherit]",
-				fixed && (safeArea ? "top-[var(--safe-top)]" : "top-0"),
+				fixed && "top-0",
 				offset > 10 && fixed ? "shadow" : "shadow-none",
 				className,
 			)}
