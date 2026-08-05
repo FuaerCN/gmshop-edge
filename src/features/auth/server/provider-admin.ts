@@ -14,6 +14,8 @@ import {
 	authProviderSecretKey,
 	authProviderSecretPurpose,
 	authProviderSettingKeys,
+	isTelegramBotToken,
+	parseAuthProviderSecretSetting,
 	parseAuthProviderSettings,
 	type StoredAuthProvider,
 	storedAuthProvidersSchema,
@@ -36,7 +38,10 @@ import { assertAuthProviderCanBeDisabled } from "./provider-policy";
 export const listAuthProvidersFn = createServerFn({ method: "GET" }).handler(
 	async () => {
 		const context = await adminContext("read");
-		const state = await loadProviderState(context.db);
+		const state = await loadProviderState(
+			context.db,
+			context.runtime.authProviderSecret,
+		);
 		return {
 			providers: state.settings.providers
 				.slice()
@@ -64,8 +69,13 @@ export const listPublicAuthProvidersFn = createServerFn({
 	const request = getRequest();
 	const db = getCloudflareEnv(request).DB;
 	if (!db) throw new Error("D1 binding DB is unavailable");
+	const runtime = await loadRequestRuntimeConfig(
+		request,
+		db,
+		new URL(request.url).origin,
+	);
 	const [state, email] = await Promise.all([
-		loadProviderState(db),
+		loadProviderState(db, runtime.authProviderSecret),
 		db
 			.prepare(
 				"SELECT 1 AS enabled FROM notification_channel_configs WHERE channel = 'email' AND enabled = 1 LIMIT 1",
@@ -88,8 +98,16 @@ export const listPublicAuthProvidersFn = createServerFn({
 					state.hasTelegramToken &&
 					state.settings.telegram.username,
 			);
-			if (provider.providerType !== "email" && !oidcEnabled && !widgetEnabled)
-				return [];
+			const telegramSocialEnabled = Boolean(
+				provider.providerId === "telegram" &&
+					provider.clientId &&
+					(oidcEnabled || widgetEnabled),
+			);
+			const socialEnabled =
+				provider.providerId === "telegram"
+					? telegramSocialEnabled
+					: oidcEnabled;
+			if (provider.providerType !== "email" && !socialEnabled) return [];
 			return [
 				{
 					providerId: provider.providerId,
@@ -117,7 +135,10 @@ export const setAuthProviderEnabledFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		const context = await adminContext("update");
-		const state = await loadProviderState(context.db);
+		const state = await loadProviderState(
+			context.db,
+			context.runtime.authProviderSecret,
+		);
 		const provider = state.settings.providers.find(
 			(entry) => entry.id === data.id,
 		);
@@ -179,7 +200,10 @@ export const reorderAuthProvidersFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		const context = await adminContext("update");
-		const state = await loadProviderState(context.db);
+		const state = await loadProviderState(
+			context.db,
+			context.runtime.authProviderSecret,
+		);
 		const requested = new Set(data.ids);
 		const slots = state.settings.providers
 			.map((provider, index) => (requested.has(provider.id) ? index : -1))
@@ -227,7 +251,10 @@ export const saveAuthProviderFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		const context = await adminContext("update");
-		const state = await loadProviderState(context.db);
+		const state = await loadProviderState(
+			context.db,
+			context.runtime.authProviderSecret,
+		);
 		const before = data.id
 			? state.settings.providers.find((provider) => provider.id === data.id)
 			: undefined;
@@ -364,7 +391,10 @@ export const uploadAuthProviderLogoFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		const context = await adminContext("update");
-		const state = await loadProviderState(context.db);
+		const state = await loadProviderState(
+			context.db,
+			context.runtime.authProviderSecret,
+		);
 		const provider = state.settings.providers.find(
 			(entry) => entry.id === data.id,
 		);
@@ -405,7 +435,10 @@ export const removeAuthProviderLogoFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		const context = await adminContext("update");
-		const state = await loadProviderState(context.db);
+		const state = await loadProviderState(
+			context.db,
+			context.runtime.authProviderSecret,
+		);
 		const provider = state.settings.providers.find(
 			(entry) => entry.id === data.id,
 		);
@@ -446,7 +479,10 @@ export const deleteAuthProviderFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		const context = await adminContext("delete");
-		const state = await loadProviderState(context.db);
+		const state = await loadProviderState(
+			context.db,
+			context.runtime.authProviderSecret,
+		);
 		const provider = state.settings.providers.find(
 			(entry) => entry.id === data.id,
 		);
@@ -511,7 +547,7 @@ export const deleteAuthProviderFn = createServerFn({ method: "POST" })
 		return { id: data.id };
 	});
 
-async function loadProviderState(db: D1Database) {
+async function loadProviderState(db: D1Database, authProviderSecret: string) {
 	const rows = await db
 		.prepare(
 			`SELECT key, value, updated_at FROM system_settings
@@ -537,15 +573,26 @@ async function loadProviderState(db: D1Database) {
 		}),
 	);
 	const encryptedValues = new Map(
-		rows.results.map((row) => [row.key, row.value]),
+		rows.results.flatMap((row) => {
+			const value = parseAuthProviderSecretSetting(row.value);
+			return value ? [[row.key, value] as const] : [];
+		}),
 	);
 	const hasDedicatedTelegramToken = encryptedValues.has(
 		authProviderSettingKeys.telegramBotToken,
 	);
+	const encryptedTelegramSecret = encryptedValues.get(
+		authProviderSecretKey("telegram"),
+	);
+	const telegramSecret = encryptedTelegramSecret
+		? await decryptSecret(
+				encryptedTelegramSecret,
+				authProviderSecret,
+				authProviderSecretPurpose("telegram"),
+			)
+		: null;
 	const hasLegacyTelegramToken =
-		!hasDedicatedTelegramToken &&
-		secretProviderIds.has("telegram") &&
-		Boolean(settings.telegram.botUserId && settings.telegram.username);
+		!hasDedicatedTelegramToken && isTelegramBotToken(telegramSecret);
 	const clientSecretProviderIds = new Set(secretProviderIds);
 	if (hasLegacyTelegramToken) clientSecretProviderIds.delete("telegram");
 	return {
@@ -634,21 +681,19 @@ async function resolveTelegramToken(
 		const encrypted = state.encryptedValues.get(
 			authProviderSecretKey("telegram"),
 		);
-		if (
-			encrypted &&
-			context.runtime.authProviderSecret &&
-			state.settings.telegram.botUserId &&
-			state.settings.telegram.username
-		) {
+		if (encrypted && context.runtime.authProviderSecret) {
 			token = await decryptSecret(
 				encrypted,
 				context.runtime.authProviderSecret,
 				authProviderSecretPurpose("telegram"),
 			);
-			identity = {
-				id: state.settings.telegram.botUserId,
-				username: state.settings.telegram.username,
-			};
+			identity =
+				state.settings.telegram.botUserId && state.settings.telegram.username
+					? {
+							id: state.settings.telegram.botUserId,
+							username: state.settings.telegram.username,
+						}
+					: await verifyTelegramAuthToken(token);
 		}
 	}
 	if (token && identity) {

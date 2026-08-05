@@ -406,7 +406,9 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 						}),
 					]
 				: []),
-			...(telegramOidcProvider?.clientId && telegramOidcProvider.clientSecret
+			...(telegramOidcProvider?.clientId &&
+			(telegramOidcProvider.clientSecret ||
+				telegramOidcProvider.telegramBotToken)
 				? [telegramOidcBetterAuthPlugin(telegramOidcProvider, db.$client)]
 				: []),
 			enabledUsersPlugin(),
@@ -558,9 +560,10 @@ function telegramOidcBetterAuthPlugin(
 	provider: RuntimeAuthProvider,
 	database: D1Database,
 ) {
-	const baseProvider = createTelegramOIDCProvider(provider.clientSecret ?? "", {
+	const clientSecret = provider.clientSecret ?? "telegram-widget-fallback";
+	const baseProvider = createTelegramOIDCProvider(clientSecret, {
 		clientId: provider.clientId ?? "",
-		clientSecret: provider.clientSecret ?? "",
+		clientSecret,
 		scopes: provider.scopes,
 		mapOIDCProfileToUser: (claims) => ({
 			email: telegramIdentityEmail(claims.sub),
@@ -581,6 +584,8 @@ function telegramOidcBetterAuthPlugin(
 		async validateAuthorizationCode(
 			input: Parameters<typeof baseProvider.validateAuthorizationCode>[0],
 		) {
+			if (!provider.clientSecret)
+				throw new Error("Telegram OIDC client secret is not configured");
 			if (!input.codeVerifier)
 				throw new Error("Telegram OIDC requires a PKCE verifier");
 			const tokens = await baseProvider.validateAuthorizationCode(input);

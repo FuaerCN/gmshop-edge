@@ -109,6 +109,15 @@ export function authProviderSecretPurpose(providerId: string) {
 	return `auth-provider:${providerId}`;
 }
 
+export function isTelegramBotToken(value: string | null) {
+	return /^\d{5,20}:[A-Za-z0-9_-]{20,200}$/.test(value ?? "");
+}
+
+export function parseAuthProviderSecretSetting(value: string) {
+	const parsed = parseJson(value);
+	return typeof parsed === "string" ? parsed : null;
+}
+
 export function parseAuthProviderSettings(
 	rows: readonly { key: string; value: string }[],
 ) {

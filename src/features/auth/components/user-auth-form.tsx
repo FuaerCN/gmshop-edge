@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Loader2, LogIn } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Captcha, Input, Password } from "#/components/pro/base/fields/input";
@@ -323,30 +323,21 @@ export function UserAuthForm({
 						</div>
 					) : null}
 					<div className="grid gap-2">
-						{externalProviders.map((provider) =>
-							provider.providerId === "telegram" &&
-							!provider.telegramOidcEnabled &&
-							provider.telegramWidgetEnabled ? (
-								<TelegramWidgetSignIn
-									key={provider.providerId}
-									redirectTo={redirectTo}
+						{externalProviders.map((provider) => (
+							<Button
+								key={provider.providerId}
+								type="button"
+								variant="outline"
+								onClick={() => void signInWithProvider(provider)}
+							>
+								<AuthProviderLogo
+									className="size-5 rounded-sm"
+									logoUrl={provider.icon}
+									providerId={provider.providerId}
 								/>
-							) : (
-								<Button
-									key={provider.providerId}
-									type="button"
-									variant="outline"
-									onClick={() => void signInWithProvider(provider)}
-								>
-									<AuthProviderLogo
-										className="size-5 rounded-sm"
-										logoUrl={provider.icon}
-										providerId={provider.providerId}
-									/>
-									{provider.displayName}
-								</Button>
-							),
-						)}
+								{provider.displayName}
+							</Button>
+						))}
 					</div>
 				</>
 			) : null}
@@ -399,34 +390,4 @@ export function UserAuthForm({
 		setSentEmail(email);
 		return true;
 	}
-}
-
-function TelegramWidgetSignIn({ redirectTo }: { redirectTo: string }) {
-	const id = `telegram-login-${useId().replaceAll(":", "")}`;
-	const navigate = useNavigate();
-
-	useEffect(() => {
-		let active = true;
-		void authClient
-			.initTelegramWidget(id, { size: "large" }, async (authData) => {
-				if (!active) return;
-				window.sessionStorage.setItem("gmshop.post_auth_redirect", redirectTo);
-				const result = await authClient.signInWithTelegram(authData);
-				if (!active) return;
-				if (result.error) {
-					toast.error(signInErrorMessage(result.error));
-					return;
-				}
-				void navigate({ to: redirectTo, replace: true });
-			})
-			.catch((error) => {
-				if (active) toast.error(signInErrorMessage(error));
-			});
-		return () => {
-			active = false;
-			document.getElementById(id)?.replaceChildren();
-		};
-	}, [id, navigate, redirectTo]);
-
-	return <div className="flex min-h-10 justify-center" id={id} />;
 }

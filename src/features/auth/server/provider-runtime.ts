@@ -3,6 +3,7 @@ import {
 	authProviderSecretKey,
 	authProviderSecretPurpose,
 	authProviderSettingKeys,
+	isTelegramBotToken,
 	parseAuthProviderSettings,
 	telegramBotTokenSecretPurpose,
 } from "../provider-settings";
@@ -108,10 +109,6 @@ export async function loadRuntimeAuthProviders(
 				};
 			}),
 	);
-}
-
-function isTelegramBotToken(value: string | null) {
-	return /^\d{5,20}:[A-Za-z0-9_-]{20,200}$/.test(value ?? "");
 }
 
 export function authProviderRevisionSignature(

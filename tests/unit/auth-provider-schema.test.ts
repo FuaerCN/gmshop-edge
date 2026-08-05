@@ -3,12 +3,41 @@ import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { authProviderPresets } from "#/features/auth/provider-presets";
 import { authProviderInputSchema } from "#/features/auth/provider-schema";
 import {
+	authProviderSecretPurpose,
 	authProviderSettingKeys,
+	isTelegramBotToken,
+	parseAuthProviderSecretSetting,
 	parseAuthProviderSettings,
 } from "#/features/auth/provider-settings";
 import { sensitiveProofSchema } from "#/features/auth/reauthentication-schema";
+import {
+	createSecretKeyring,
+	decryptSecret,
+	encryptSecret,
+} from "#/lib/secrets";
 
 describe("authentication provider configuration", () => {
+	it("recognizes a JSON-stored legacy Telegram bot token", async () => {
+		const token = "123456789:telegram-bot-token-value";
+		const keyring = createSecretKeyring();
+		const encrypted = await encryptSecret(
+			token,
+			keyring,
+			authProviderSecretPurpose("telegram"),
+		);
+		const stored = parseAuthProviderSecretSetting(JSON.stringify(encrypted));
+		expect(stored).not.toBeNull();
+		expect(
+			isTelegramBotToken(
+				await decryptSecret(
+					stored ?? "",
+					keyring,
+					authProviderSecretPurpose("telegram"),
+				),
+			),
+		).toBe(true);
+	});
+
 	it("offers Telegram as a Better Auth social provider", () => {
 		expect(
 			authProviderPresets

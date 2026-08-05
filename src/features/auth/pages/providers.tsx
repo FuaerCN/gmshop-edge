@@ -54,6 +54,7 @@ import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
 
 const authProvidersQueryKey = ["admin", "auth-providers"] as const;
+const publicAuthProvidersQueryKey = ["public", "auth-providers"] as const;
 const authProvidersQueryOptions = queryOptions({
 	queryKey: authProvidersQueryKey,
 	queryFn: () => listAuthProvidersFn(),
@@ -73,7 +74,10 @@ export function AuthProvidersPage() {
 	const [editing, setEditing] = useState<Provider | null>(null);
 	const [deleting, setDeleting] = useState<Provider | null>(null);
 	const refresh = () =>
-		queryClient.invalidateQueries({ queryKey: authProvidersQueryKey });
+		Promise.all([
+			queryClient.invalidateQueries({ queryKey: authProvidersQueryKey }),
+			queryClient.invalidateQueries({ queryKey: publicAuthProvidersQueryKey }),
+		]);
 	const save = useMutation({
 		mutationFn: saveAuthProviderFn,
 		onSuccess: async () => {

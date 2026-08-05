@@ -82,6 +82,26 @@ describe("Telegram Widget fallback login", { timeout: 30_000 }, () => {
 		expect(await replay.text()).not.toContain(botToken);
 	});
 
+	it("starts social login when Telegram will return a widget fragment", async () => {
+		const response = await auth.handler(
+			new Request("https://shop.example/api/auth/sign-in/social", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					origin: "https://shop.example",
+				},
+				body: JSON.stringify({
+					provider: "telegram",
+					callbackURL: "/account",
+					disableRedirect: true,
+				}),
+			}),
+		);
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as { url: string };
+		expect(new URL(body.url).origin).toBe("https://oauth.telegram.org");
+	});
+
 	it("rejects an untrusted browser origin", async () => {
 		const authData = await signedWidgetData(botToken, {
 			id: 42,
@@ -135,7 +155,7 @@ function telegramProvider(botToken: string): RuntimeAuthProvider {
 		providerType: "social",
 		displayName: "Telegram",
 		clientId: "123456789",
-		clientSecret: "telegram-oidc-client-secret",
+		clientSecret: null,
 		scopes: ["openid", "profile"],
 		allowSignup: true,
 		revision: 1,
