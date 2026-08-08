@@ -6,6 +6,7 @@ import {
 import { sha256Hex } from "#/features/shop-payments/signature";
 import { DomainError } from "#/lib/domain-error";
 import { base64ToBytes, rsaSha256Sign, rsaSha256Verify } from "./rsa";
+import { readPaymentWebhookText } from "./webhook-body";
 
 const apiOrigin = "https://api.mch.weixin.qq.com";
 const encoder = new TextEncoder();
@@ -139,7 +140,7 @@ export function createWechatPayProvider(
 					"Invalid payment callback method",
 				);
 			const credential = wechatCredentialSchema.parse(rawCredential);
-			const body = await request.text();
+			const body = await readPaymentWebhookText(request);
 			await verifyWechatSignature(request.headers, body, credential);
 			const notification = notificationSchema.parse(JSON.parse(body));
 			const order = orderSchema.parse(

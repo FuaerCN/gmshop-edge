@@ -244,7 +244,17 @@ export async function refundEntitlementGrantStatements(
 	db: D1Database,
 	orderId: string,
 	now: number,
+	guard?: { refundId: string; attempt: number },
 ) {
+	const guardSql = guard
+		? ` AND EXISTS (
+			 SELECT 1 FROM refunds completed_refund WHERE completed_refund.id = ?
+			  AND completed_refund.attempt_count = ?
+			  AND completed_refund.status = 'succeeded'
+			  AND completed_refund.completed_at = ?
+			)`
+		: "";
+	const guardBindings = guard ? [guard.refundId, guard.attempt, now] : [];
 	const affected = await db
 		.prepare(
 			`SELECT DISTINCT grants.entitlement_id FROM entitlement_grants grants
@@ -259,9 +269,9 @@ export async function refundEntitlementGrantStatements(
 				`UPDATE entitlement_grants SET status = 'refunded', revoked_at = ?,
 				 revocation_reason = 'order_refunded', updated_at = ?
 				 WHERE source_order_item_id IN (SELECT id FROM shop_order_items WHERE order_id = ?)
-				 AND status IN ('pending', 'active')`,
+				 AND status IN ('pending', 'active')${guardSql}`,
 			)
-			.bind(now, now, orderId),
+			.bind(now, now, orderId, ...guardBindings),
 	];
 	for (const row of affected.results) {
 		const entitlement = await db
@@ -307,7 +317,8 @@ export async function refundEntitlementGrantStatements(
 			db
 				.prepare(
 					`UPDATE customer_entitlements SET status = ?, usage_limit = ?, access_limit = ?,
-					 activated_at = ?, expires_at = ?, revoked_at = ?, updated_at = ? WHERE id = ?`,
+					 activated_at = ?, expires_at = ?, revoked_at = ?, updated_at = ?
+					 WHERE id = ?${guardSql}`,
 				)
 				.bind(
 					status,
@@ -318,6 +329,7 @@ export async function refundEntitlementGrantStatements(
 					status === "revoked" ? now : null,
 					now,
 					row.entitlement_id,
+					...guardBindings,
 				),
 		);
 	}

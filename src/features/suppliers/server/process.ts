@@ -373,38 +373,15 @@ async function fulfillSupplierOrder(
 			"Supplier delivery quantity mismatch",
 		);
 	const prepared = await Promise.all(
-		cards.map(async (card) => ({
-			id: crypto.randomUUID(),
+		cards.map(async (card, index) => ({
+			id: await deterministicSupplierStockId(order.id, index),
 			encrypted: await encryptSecret(card, commerceSecret, "stock-entry"),
 			fingerprint: await fingerprintInventorySecret(card, commerceSecret),
 			mask: maskInventorySecret(card),
 		})),
 	);
 	const now = Date.now();
-	const statements = prepared.map((entry) =>
-		db
-			.prepare(
-				`INSERT INTO stock_entries
-				 (id, sellable_item_id, content_encrypted, key_version,
-				  content_fingerprint, content_mask, status, order_item_id,
-				  supplier_order_id, reserved_at, created_at, updated_at)
-				 SELECT ?, oi.sellable_item_id, ?, 1, ?, ?, 'reserved', ?,
-				  ?, ?, ?, ? FROM shop_order_items oi WHERE oi.id = ?`,
-			)
-			.bind(
-				entry.id,
-				entry.encrypted,
-				entry.fingerprint,
-				entry.mask,
-				order.order_item_id,
-				order.id,
-				now,
-				now,
-				now,
-				order.order_item_id,
-			),
-	);
-	statements.push(
+	const statements: D1PreparedStatement[] = [
 		db
 			.prepare(
 				`UPDATE supplier_orders SET state = 'supplied',
@@ -413,6 +390,32 @@ async function fulfillSupplierOrder(
 				 WHERE id = ? AND state IN ('submitting', 'uncertain')`,
 			)
 			.bind(result.upstreamOrderId, now, now, order.id),
+	];
+	statements.push(
+		...prepared.map((entry) =>
+			db
+				.prepare(
+					`INSERT INTO stock_entries
+				 (id, sellable_item_id, content_encrypted, key_version,
+				  content_fingerprint, content_mask, status, order_item_id,
+				  supplier_order_id, reserved_at, created_at, updated_at)
+				 SELECT ?, oi.sellable_item_id, ?, 1, ?, ?, 'reserved', ?,
+				  ?, ?, ?, ? FROM shop_order_items oi WHERE oi.id = ?
+				 ON CONFLICT(id) DO NOTHING`,
+				)
+				.bind(
+					entry.id,
+					entry.encrypted,
+					entry.fingerprint,
+					entry.mask,
+					order.order_item_id,
+					order.id,
+					now,
+					now,
+					now,
+					order.order_item_id,
+				),
+		),
 		db
 			.prepare(
 				`UPDATE delivery_records SET status = 'pending',
@@ -440,8 +443,24 @@ async function fulfillSupplierOrder(
 				now,
 			),
 	);
-	await db.batch(statements);
-	return { id: order.id, state: "supplied", duplicate: false };
+	const results = await db.batch(statements);
+	const duplicate = Number(results[0]?.meta.changes ?? 0) !== 1;
+	return { id: order.id, state: "supplied", duplicate };
+}
+
+async function deterministicSupplierStockId(orderId: string, index: number) {
+	const digest = new Uint8Array(
+		await crypto.subtle.digest(
+			"SHA-256",
+			new TextEncoder().encode(`supplier-stock:${orderId}:${index}`),
+		),
+	).slice(0, 16);
+	digest[6] = ((digest[6] ?? 0) & 0x0f) | 0x50;
+	digest[8] = ((digest[8] ?? 0) & 0x3f) | 0x80;
+	const hex = Array.from(digest, (byte) =>
+		byte.toString(16).padStart(2, "0"),
+	).join("");
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 async function candidateAccounts(

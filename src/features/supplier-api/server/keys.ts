@@ -1,13 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import type { z } from "zod";
+import { verifySensitiveAdminAction } from "#/features/auth/server/reauthenticate";
 import { resolveStoreAccount } from "#/features/storefront/server/account";
 import { DomainError } from "#/lib/domain-error";
-import { encryptSecret } from "#/lib/secrets";
 import { getDb } from "#/server/db.server";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import { supplierApiKeyCreateSchema, supplierApiKeyIdSchema } from "../schema";
 import { supplierApiIsEnabled } from "./auth";
+import { createSupplierApiKey, revokeSupplierApiKey } from "./key-store";
 
 export const listSupplierApiKeysFn = createServerFn({ method: "GET" }).handler(
 	async () => {
@@ -40,11 +41,12 @@ export const createSupplierApiKeyFn = createServerFn({ method: "POST" })
 	.validator((value: z.input<typeof supplierApiKeyCreateSchema>) =>
 		supplierApiKeyCreateSchema.parse(value),
 	)
-	.handler(async () => {
+	.handler(async ({ data }) => {
 		const request = getRequest();
 		const db = getDb(request).$client;
 		const account = await resolveStoreAccount(db, request, { required: true });
 		const userId = account?.user.id ?? "";
+		await verifySensitiveAdminAction(request, userId, data);
 		if (!(await supplierApiIsEnabled(db)))
 			throw new DomainError(
 				"supplier_api_not_enabled",
@@ -58,32 +60,13 @@ export const createSupplierApiKeyFn = createServerFn({ method: "POST" })
 				503,
 				"Supplier API unavailable",
 			);
-		const apiKey = `gme_${crypto.randomUUID().replaceAll("-", "")}`;
-		const apiSecret = Array.from(
-			crypto.getRandomValues(new Uint8Array(32)),
-			(byte) => byte.toString(16).padStart(2, "0"),
-		).join("");
-		const now = Date.now();
-		await db
-			.prepare(
-				`INSERT INTO supplier_api_keys (id, user_id, name, key_id, secret_encrypted, secret_revision, allowed_callback_origin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-			)
-			.bind(
-				crypto.randomUUID(),
-				userId,
-				`API Key · ${apiKey.slice(-8)}`,
-				apiKey,
-				await encryptSecret(
-					apiSecret,
-					runtime.commerceSecret,
-					"supplier-api-key",
-				),
-				null,
-				now,
-				now,
-			)
-			.run();
-		return { apiKey, apiSecret };
+		return createSupplierApiKey(
+			db,
+			request,
+			userId,
+			runtime.commerceSecret,
+			data,
+		);
 	});
 
 export const revokeSupplierApiKeyFn = createServerFn({ method: "POST" })
@@ -94,11 +77,5 @@ export const revokeSupplierApiKeyFn = createServerFn({ method: "POST" })
 		const request = getRequest();
 		const db = getDb(request).$client;
 		const account = await resolveStoreAccount(db, request, { required: true });
-		await db
-			.prepare(
-				"UPDATE supplier_api_keys SET revoked_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
-			)
-			.bind(Date.now(), Date.now(), data.id, account?.user.id ?? "")
-			.run();
-		return { revoked: true };
+		return revokeSupplierApiKey(db, request, account?.user.id ?? "", data.id);
 	});

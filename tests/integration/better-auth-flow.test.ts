@@ -114,6 +114,20 @@ describe("Better Auth account security flow", () => {
 			asResponse: true,
 		});
 		const cookie = responseCookie(signedIn);
+		const root = await database
+			.prepare("SELECT id FROM users WHERE email = ?")
+			.bind(email)
+			.first<{ id: string }>();
+		await database
+			.prepare(
+				`INSERT INTO supplier_api_keys
+				 (id, user_id, name, key_id, secret_encrypted, secret_revision,
+				  created_at, updated_at)
+				 VALUES ('password-change-key', ?, 'Password change key',
+				  'gme_password_change', 'encrypted-fixture', 1, ?, ?)`,
+			)
+			.bind(root?.id, Date.now(), Date.now())
+			.run();
 		const replacement = "replacement-root-password";
 		const changed = await auth.api.changePassword({
 			headers: {
@@ -143,6 +157,12 @@ describe("Better Auth account security flow", () => {
 		});
 		expect(audit?.after).not.toContain(password);
 		expect(audit?.after).not.toContain(replacement);
+		const key = await database
+			.prepare(
+				"SELECT revoked_at FROM supplier_api_keys WHERE id = 'password-change-key'",
+			)
+			.first<{ revoked_at: number | null }>();
+		expect(key?.revoked_at).toEqual(expect.any(Number));
 
 		const currentCookie = mergeResponseCookie(cookie, changed);
 		const restored = await auth.api.changePassword({

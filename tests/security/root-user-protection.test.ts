@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as schema from "#/db/schema";
+import { updateCustomerRecord } from "#/features/customers/server/update";
 import { replaceUserRolesAtomically } from "#/features/users/server/role-assignments";
 import {
 	createUser,
@@ -37,7 +38,7 @@ describe("root user protection", () => {
 				enabled: false,
 				currentUserId: "operator",
 			}),
-		).rejects.toMatchObject({ code: "last_root_required", status: 409 });
+		).rejects.toMatchObject({ code: "root_user_immutable", status: 409 });
 	});
 
 	it("rejects disabling the current user through the edit form", async () => {
@@ -114,7 +115,7 @@ describe("root user protection", () => {
 		expect(persisted).toEqual({ users: 1, accounts: 1 });
 	});
 
-	it("allows disabling one root after another enabled root exists", async () => {
+	it("rejects disabling a root even when another enabled root exists", async () => {
 		await seedRoot(database, "root-b", "root-b@example.com");
 		await expect(
 			setUserEnabled(drizzle(database, { schema }), {
@@ -122,7 +123,46 @@ describe("root user protection", () => {
 				enabled: false,
 				currentUserId: "root-b",
 			}),
-		).resolves.toEqual({ id: "root-a" });
+		).rejects.toMatchObject({ code: "root_user_immutable", status: 409 });
+	});
+
+	it("rejects editing or resetting a root account", async () => {
+		await expect(
+			updateUser(drizzle(database, { schema }), {
+				id: "root-a",
+				name: "Compromised Root",
+				email: "compromised-root@example.com",
+				enabled: true,
+				password: "attacker-password",
+				currentUserId: "operator",
+			}),
+		).rejects.toMatchObject({ code: "root_user_immutable", status: 409 });
+		const root = await database
+			.prepare("SELECT name, email FROM users WHERE id = 'root-a'")
+			.first<{ name: string; email: string }>();
+		expect(root).toEqual({ name: "root-a", email: "root-a@example.com" });
+	});
+
+	it("rejects editing or disabling a root through customer management", async () => {
+		await expect(
+			updateCustomerRecord(
+				database,
+				new Request("https://example.com/admin/users"),
+				"operator",
+				{
+					id: "root-a",
+					name: "Compromised Root",
+					note: "disabled through customer management",
+					status: "disabled",
+				},
+			),
+		).rejects.toMatchObject({ code: "root_user_immutable", status: 409 });
+		const root = await database
+			.prepare(
+				"SELECT name, enabled, customer_note FROM users WHERE id = 'root-a'",
+			)
+			.first<{ name: string; enabled: number; customer_note: string | null }>();
+		expect(root).toEqual({ name: "root-a", enabled: 1, customer_note: null });
 	});
 
 	it("revokes sessions when the edit form disables a user", async () => {
@@ -186,7 +226,7 @@ describe("root user protection", () => {
 		expect(state).toEqual({ enabled: 0, sessions: 0 });
 	});
 
-	it("atomically preserves one root during concurrent disable requests", async () => {
+	it("rejects concurrent attempts to disable root users", async () => {
 		await database
 			.prepare(
 				"UPDATE users SET enabled = 1, disabled_at = NULL WHERE id IN ('root-a', 'root-b')",
@@ -207,16 +247,16 @@ describe("root user protection", () => {
 		]);
 		expect(
 			results.filter((result) => result.status === "fulfilled"),
-		).toHaveLength(1);
+		).toHaveLength(0);
 		const enabledRoots = await database
 			.prepare(
 				"SELECT COUNT(*) AS count FROM users u JOIN json_each(u.role_ids) assigned JOIN roles r ON r.id = assigned.value WHERE u.enabled = 1 AND r.name = 'root'",
 			)
 			.first<{ count: number }>();
-		expect(enabledRoots?.count).toBe(1);
+		expect(enabledRoots?.count).toBe(2);
 	});
 
-	it("atomically preserves one root during concurrent role removals", async () => {
+	it("rejects root role changes from a non-root actor", async () => {
 		await database
 			.prepare(
 				"UPDATE users SET enabled = 1, disabled_at = NULL WHERE id IN ('root-a', 'root-b')",
@@ -226,30 +266,42 @@ describe("root user protection", () => {
 			.prepare("UPDATE users SET role_ids = ? WHERE id IN ('root-a', 'root-b')")
 			.bind(JSON.stringify([rootRoleId]))
 			.run();
-		const results = await Promise.allSettled([
+		await expect(
 			replaceUserRolesAtomically(database, {
 				userId: "root-a",
 				roleIds: [],
 				currentUserId: "operator",
 			}),
+		).rejects.toMatchObject({ code: "root_role_required", status: 403 });
+		await expect(
 			replaceUserRolesAtomically(database, {
-				userId: "root-b",
-				roleIds: [],
+				userId: "member-a",
+				roleIds: [rootRoleId],
 				currentUserId: "operator",
 			}),
-		]);
-		expect(
-			results.filter((result) => result.status === "fulfilled"),
-		).toHaveLength(1);
+		).rejects.toMatchObject({ code: "root_role_required", status: 403 });
 		const assignments = await database
 			.prepare(
 				"SELECT COUNT(*) AS count FROM users u JOIN json_each(u.role_ids) assigned JOIN roles r ON r.id = assigned.value WHERE r.name = 'root' AND r.enabled = 1 AND u.enabled = 1",
 			)
 			.first<{ count: number }>();
-		expect(assignments?.count).toBe(1);
+		expect(assignments?.count).toBe(2);
 	});
 
-	it("atomically preserves one root during concurrent user deletions", async () => {
+	it("allows an enabled root to assign the root role", async () => {
+		await expect(
+			replaceUserRolesAtomically(database, {
+				userId: "member-a",
+				roleIds: [rootRoleId],
+				currentUserId: "root-b",
+			}),
+		).resolves.toEqual({ userId: "member-a", roleIds: [rootRoleId] });
+		await database
+			.prepare("UPDATE users SET role_ids = '[]' WHERE id = 'member-a'")
+			.run();
+	});
+
+	it("rejects deleting every root account", async () => {
 		const now = Date.now();
 		await database
 			.prepare("UPDATE users SET role_ids = ? WHERE id IN ('root-a', 'root-b')")
@@ -273,14 +325,22 @@ describe("root user protection", () => {
 			deleteUser(db, { id: "root-b", currentUserId: "operator" }),
 		]);
 		expect(
-			results.filter((result) => result.status === "fulfilled"),
-		).toHaveLength(1);
+			results.filter((result) => result.status === "rejected"),
+		).toHaveLength(2);
+		for (const result of results) {
+			if (result.status !== "rejected")
+				throw new Error("Root deletion succeeded");
+			expect(result.reason).toMatchObject({
+				code: "root_user_immutable",
+				status: 409,
+			});
+		}
 		const enabledRoots = await database
 			.prepare(
 				"SELECT COUNT(*) AS count FROM users u JOIN json_each(u.role_ids) assigned JOIN roles r ON r.id = assigned.value WHERE u.enabled = 1 AND r.enabled = 1 AND r.name = 'root'",
 			)
 			.first<{ count: number }>();
-		expect(enabledRoots?.count).toBe(1);
+		expect(enabledRoots?.count).toBe(2);
 		const history = await database
 			.prepare(
 				`SELECT

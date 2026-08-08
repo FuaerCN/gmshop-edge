@@ -7,6 +7,7 @@ import { sha256Hex } from "#/features/shop-payments/signature";
 import { DomainError } from "#/lib/domain-error";
 import { minorToDecimal } from "#/lib/units";
 import { rsaSha256Sign, rsaSha256Verify } from "./rsa";
+import { readPaymentWebhookText } from "./webhook-body";
 
 const gateway = "https://openapi.alipay.com/gateway.do";
 
@@ -123,7 +124,7 @@ export function createAlipayProvider(
 					"Invalid payment callback method",
 				);
 			const credential = alipayCredentialSchema.parse(rawCredential);
-			const body = await request.text();
+			const body = await readPaymentWebhookText(request);
 			const params = Object.fromEntries(new URLSearchParams(body));
 			const event = callbackSchema.parse(params);
 			const valid = await rsaSha256Verify(

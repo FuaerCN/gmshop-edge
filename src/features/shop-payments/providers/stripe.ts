@@ -8,6 +8,7 @@ import {
 	sha256Hex,
 } from "#/features/shop-payments/signature";
 import { DomainError } from "#/lib/domain-error";
+import { readPaymentWebhookText } from "./webhook-body";
 
 const checkoutSessionSchema = z.object({
 	id: z.string(),
@@ -119,7 +120,7 @@ export const stripePaymentProvider: PaymentProviderAdapter = {
 	},
 	async parseWebhook(request, rawCredential, now = Date.now()) {
 		const { webhookSecret } = stripeCredentialSchema.parse(rawCredential);
-		const body = await request.text();
+		const body = await readPaymentWebhookText(request);
 		const signature = parseTimestampedSignature(
 			request.headers.get("stripe-signature") ?? "",
 		);

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import type { z } from "zod";
 import { systemPermission } from "#/features/access/system-rbac";
 import { readImageDimensions } from "#/features/catalog/server/image-dimensions";
+import { readBoundedResponseBytes } from "#/lib/bounded-stream";
 import { DomainError } from "#/lib/domain-error";
 import { createAuditStatement } from "#/server/audit";
 import { getAdminRuntimeServerContext } from "#/server/context";
@@ -709,14 +710,7 @@ async function importProductCover(
 			response.headers.get("content-type"),
 		);
 		if (!contentType) return null;
-		const declaredSize = Number(response.headers.get("content-length") ?? "0");
-		if (
-			!Number.isSafeInteger(declaredSize) ||
-			declaredSize < 0 ||
-			declaredSize > 5_000_000
-		)
-			return null;
-		const bytes = new Uint8Array(await response.arrayBuffer());
+		const bytes = await readBoundedResponseBytes(response, 5_000_000);
 		if (!bytes.length || bytes.length > 5_000_000) return null;
 		const dimensions = readImageDimensions(bytes, contentType);
 		if (!dimensions) return null;

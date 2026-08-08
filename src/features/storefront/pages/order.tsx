@@ -6,22 +6,14 @@ import {
 	ArrowLeft,
 	Boxes,
 	Clock3,
-	Copy,
 	CreditCard,
 	Download,
 	LifeBuoy,
 	QrCode,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import {
-	type FormEvent,
-	type ReactNode,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CopyButton } from "#/components/pro/base/button";
 import { ModalForm } from "#/components/pro/form";
 import { statusLabel } from "#/components/status-badge";
 import { Badge } from "#/components/ui/badge";
@@ -31,6 +23,7 @@ import { Label } from "#/components/ui/label";
 import { Skeleton } from "#/components/ui/skeleton";
 import { shopOrderStatusLabel } from "#/features/shop-orders/labels";
 import type { ShopOrderStatus } from "#/features/shop-orders/schema";
+import { DeliveryRevealContent } from "#/features/storefront/components/delivery-reveal-content";
 import {
 	readGuestOrderEmail,
 	writeGuestOrderEmail,
@@ -588,49 +581,6 @@ function DirectDeliveryContent({
 	guestEmail: string;
 	orderNumber: string;
 }) {
-	const requested = useRef(false);
-	const [content, setContent] = useState("");
-	const [failed, setFailed] = useState(false);
-
-	useEffect(() => {
-		if (requested.current) return;
-		requested.current = true;
-		void fetch(
-			`/api/shop/orders/${encodeURIComponent(orderNumber)}/deliveries/${encodeURIComponent(delivery.id)}/reveal`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					email: accountOrder ? undefined : guestEmail,
-				}),
-				credentials: "same-origin",
-			},
-		)
-			.then(async (response) => {
-				if (!response.ok) throw new Error("delivery_reveal_failed");
-				const body = (await response.json()) as { content?: unknown };
-				if (typeof body.content !== "string")
-					throw new Error("delivery_reveal_failed");
-				setContent(body.content);
-			})
-			.catch(() => setFailed(true));
-	}, [accountOrder, delivery.id, guestEmail, orderNumber]);
-
-	function recordCopy() {
-		void fetch(
-			`/api/shop/orders/${encodeURIComponent(orderNumber)}/deliveries/${encodeURIComponent(delivery.id)}/reveal`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					action: "copied",
-					email: accountOrder ? undefined : guestEmail,
-				}),
-				credentials: "same-origin",
-			},
-		);
-	}
-
 	return (
 		<div className="grid gap-3 py-4 first:pt-0 last:pb-0">
 			<div>
@@ -639,28 +589,13 @@ function DirectDeliveryContent({
 					{delivery.sellableItemName}
 				</p>
 			</div>
-			{content ? (
-				<div className="flex min-w-0 items-center gap-2 rounded-xl border bg-background/60 p-2 pl-3">
-					<code className="min-w-0 flex-1 overflow-x-auto font-mono text-sm whitespace-pre">
-						{content}
-					</code>
-					<CopyButton
-						aria-label={m.store_copy_delivery()}
-						copy={content}
-						icon={<Copy />}
-						onClick={recordCopy}
-						size="icon-sm"
-						tooltip={m.store_copy_delivery()}
-						variant="ghost"
-					/>
-				</div>
-			) : failed ? (
-				<p className="text-destructive text-sm">
-					{m.store_delivery_reveal_failed()}
-				</p>
-			) : (
-				<Skeleton className="h-20 w-full rounded-xl" />
-			)}
+			<DeliveryRevealContent
+				className="bg-background/60"
+				deliveryId={delivery.id}
+				email={accountOrder ? undefined : guestEmail}
+				orderNumber={orderNumber}
+				skeletonClassName="h-20"
+			/>
 		</div>
 	);
 }

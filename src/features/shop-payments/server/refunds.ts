@@ -7,6 +7,9 @@ import { DomainError } from "#/lib/domain-error";
 import { decryptSecret } from "#/lib/secrets";
 import { createAuditStatement } from "#/server/audit";
 import type { RefundQueueMessage } from "#/server/queue/types";
+
+const REFUND_PROCESSING_LEASE_MS = 120_000;
+
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
 const refundRequestSchema = z.object({
@@ -521,15 +524,15 @@ export async function processShopRefund(
 		),
 	);
 	const adapter = getPaymentProvider(refund.provider);
-	const attempt = refund.attempt_count + 1;
-	await db
-		.prepare(
-			`UPDATE refunds SET status = 'processing', attempt_count = ?,
-			 next_attempt_at = NULL, updated_at = ? WHERE id = ?
-			 AND status IN ('pending', 'processing', 'failed')`,
-		)
-		.bind(attempt, Date.now(), refund.id)
-		.run();
+	const attempt = await claimRefundAttempt(db, refund);
+	if (attempt === null) {
+		const current = await loadRefund(db, refund.id);
+		return {
+			id: refund.id,
+			status: current?.status ?? refund.status,
+			duplicate: true,
+		};
+	}
 	try {
 		const result = refund.provider_refund_id
 			? await adapter.queryRefund(
@@ -560,10 +563,34 @@ export async function processShopRefund(
 			result.status,
 			result.failureCode,
 			result.providerRefundId,
+			attempt,
 		);
 	} catch {
 		return recordRefundProviderFailure(db, refund, attempt);
 	}
+}
+
+async function claimRefundAttempt(db: D1Database, refund: RefundContext) {
+	const now = Date.now();
+	const attempt = refund.attempt_count + 1;
+	const result = await db
+		.prepare(
+			`UPDATE refunds SET status = 'processing', attempt_count = ?,
+			 next_attempt_at = ?, updated_at = ? WHERE id = ? AND attempt_count = ?
+			 AND status IN ('pending', 'processing', 'failed')
+			 AND COALESCE(failure_code, '') <> 'manual_action_required'
+			 AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
+		)
+		.bind(
+			attempt,
+			now + REFUND_PROCESSING_LEASE_MS,
+			now,
+			refund.id,
+			refund.attempt_count,
+			now,
+		)
+		.run();
+	return Number(result.meta.changes ?? 0) === 1 ? attempt : null;
 }
 
 async function loadRefund(db: D1Database, id: string) {
@@ -608,12 +635,30 @@ export async function completeManualShopRefund(
 			400,
 			"External refund reference is required",
 		);
+	const attempt = refund.attempt_count + 1;
+	const claimed = await db
+		.prepare(
+			`UPDATE refunds SET attempt_count = ?, updated_at = ?
+			 WHERE id = ? AND status = 'processing'
+			 AND failure_code = 'manual_action_required' AND attempt_count = ?`,
+		)
+		.bind(attempt, Date.now(), refund.id, refund.attempt_count)
+		.run();
+	if (Number(claimed.meta.changes ?? 0) !== 1) {
+		const current = await loadRefund(db, refund.id);
+		return {
+			id: refund.id,
+			status: current?.status ?? refund.status,
+			duplicate: true,
+		};
+	}
 	return finalizeRefund(
 		db,
 		refund,
 		"succeeded",
 		null,
 		`manual:${normalizedReference}`,
+		attempt,
 		context,
 	);
 }
@@ -627,15 +672,22 @@ async function scheduleRefundCheck(
 	const now = Date.now();
 	const nextAttemptAt =
 		now + Math.min(3_600_000, 30_000 * 2 ** Math.min(attempt - 1, 6));
-	await db.batch([
+	const results = await db.batch([
 		db
 			.prepare(
 				`UPDATE refunds SET status = 'processing', provider_refund_id = ?,
-				 next_attempt_at = ?, failure_code = NULL, updated_at = ? WHERE id = ?`,
+				 next_attempt_at = ?, failure_code = NULL, updated_at = ? WHERE id = ?
+				 AND status = 'processing' AND attempt_count = ?`,
 			)
-			.bind(providerRefundId, nextAttemptAt, now, id),
-		refundOutboxStatement(db, id, "refund.check", now, nextAttemptAt, attempt),
+			.bind(providerRefundId, nextAttemptAt, now, id, attempt),
+		refundOutboxStatement(db, id, "refund.check", now, nextAttemptAt, attempt, {
+			attempt,
+			status: "processing",
+			nextAttemptAt,
+		}),
 	]);
+	if (Number(results[0]?.meta.changes ?? 0) !== 1)
+		return { id, status: "processing" as const, duplicate: true };
 	return { id, status: "processing" as const, duplicate: false };
 }
 
@@ -648,13 +700,14 @@ async function recordRefundProviderFailure(
 	if (attempt < 5) {
 		const nextAttemptAt =
 			now + Math.min(3_600_000, 10_000 * 2 ** (attempt - 1));
-		await db.batch([
+		const results = await db.batch([
 			db
 				.prepare(
 					`UPDATE refunds SET status = 'failed', failure_code = 'provider_unavailable',
-					 next_attempt_at = ?, updated_at = ? WHERE id = ?`,
+					 next_attempt_at = ?, updated_at = ? WHERE id = ?
+					 AND status = 'processing' AND attempt_count = ?`,
 				)
-				.bind(nextAttemptAt, now, refund.id),
+				.bind(nextAttemptAt, now, refund.id, attempt),
 			refundOutboxStatement(
 				db,
 				refund.id,
@@ -662,8 +715,11 @@ async function recordRefundProviderFailure(
 				now,
 				nextAttemptAt,
 				attempt,
+				{ attempt, status: "failed", nextAttemptAt },
 			),
 		]);
+		if (Number(results[0]?.meta.changes ?? 0) !== 1)
+			return { id: refund.id, status: "failed" as const, duplicate: true };
 		return { id: refund.id, status: "retrying" as const, duplicate: false };
 	}
 	return finalizeRefund(
@@ -672,6 +728,7 @@ async function recordRefundProviderFailure(
 		"failed",
 		"provider_unavailable",
 		refund.provider_refund_id,
+		attempt,
 	);
 }
 
@@ -681,6 +738,7 @@ async function finalizeRefund(
 	status: "succeeded" | "failed" | "cancelled",
 	failureCode: string | null,
 	providerRefundId: string | null,
+	attempt: number,
 	actor?: { actorUserId: string; request: Request },
 ) {
 	const now = Date.now();
@@ -703,23 +761,50 @@ async function finalizeRefund(
 		db
 			.prepare(
 				`UPDATE refunds SET status = ?, provider_refund_id = ?, failure_code = ?, next_attempt_at = NULL,
-				 completed_at = ?, updated_at = ? WHERE id = ? AND status IN ('processing', 'failed')`,
+				 completed_at = ?, updated_at = ? WHERE id = ?
+				 AND status IN ('processing', 'failed') AND attempt_count = ?`,
 			)
-			.bind(status, providerRefundId, failureCode, now, now, refund.id),
+			.bind(
+				status,
+				providerRefundId,
+				failureCode,
+				now,
+				now,
+				refund.id,
+				attempt,
+			),
 		db
 			.prepare(
 				`UPDATE shop_orders SET status = ?, version = version + 1,
 				 refunded_at = CASE WHEN ? = 'refunded' THEN ? ELSE refunded_at END,
-				 updated_at = ? WHERE id = ?`,
+				 updated_at = ? WHERE id = ? AND EXISTS (
+				  SELECT 1 FROM refunds completed_refund WHERE completed_refund.id = ?
+				   AND completed_refund.attempt_count = ? AND completed_refund.status = ?
+				   AND completed_refund.completed_at = ?
+				 )`,
 			)
-			.bind(orderStatus, orderStatus, now, now, refund.order_id),
+			.bind(
+				orderStatus,
+				orderStatus,
+				now,
+				now,
+				refund.order_id,
+				refund.id,
+				attempt,
+				status,
+				now,
+			),
 		db
 			.prepare(
 				`INSERT INTO shop_order_events
 				 (id, order_id, event_type, visibility, from_status, to_status,
 				  order_version, note, actor_type, actor_user_id, created_at)
 				 SELECT ?, id, ?, 'customer', 'refunding', ?, version, ?, ?, ?, ?
-				 FROM shop_orders WHERE id = ? AND status = ?`,
+				 FROM shop_orders WHERE id = ? AND status = ? AND EXISTS (
+				  SELECT 1 FROM refunds completed_refund WHERE completed_refund.id = ?
+				   AND completed_refund.attempt_count = ? AND completed_refund.status = ?
+				   AND completed_refund.completed_at = ?
+				 )`,
 			)
 			.bind(
 				crypto.randomUUID(),
@@ -731,6 +816,10 @@ async function finalizeRefund(
 				now,
 				refund.order_id,
 				orderStatus,
+				refund.id,
+				attempt,
+				status,
+				now,
 			),
 		refundOutboxStatement(
 			db,
@@ -738,42 +827,34 @@ async function finalizeRefund(
 			status === "succeeded" ? "refund.succeeded" : "refund.failed",
 			now,
 			now,
+			attempt,
+			{ attempt, status, completedAt: now },
 		),
-		actor
-			? createAuditStatement(db, actor.request, actor.actorUserId, {
-					action: "refund.manual_completed",
-					targetType: "refund",
-					targetId: refund.id,
-					after: { status, orderStatus, providerRefundId },
-				})
-			: db
-					.prepare(
-						`INSERT INTO audit_logs
-						 (id, action, target_type, target_id, after, created_at)
-						 VALUES (?, 'refund.processed', 'refund', ?, ?, ?)`,
-					)
-					.bind(
-						crypto.randomUUID(),
-						refund.id,
-						JSON.stringify({
-							status,
-							orderStatus,
-							failureCode,
-							providerRefundId,
-						}),
-						now,
-					),
+		refundCompletionAuditStatement(db, refund.id, attempt, status, now, {
+			failureCode,
+			orderStatus,
+			providerRefundId,
+			actor,
+		}),
 	];
 	if (status === "succeeded" && orderStatus === "refunded")
 		statements.push(
-			...(await refundEntitlementGrantStatements(db, refund.order_id, now)),
+			...(await refundEntitlementGrantStatements(db, refund.order_id, now, {
+				refundId: refund.id,
+				attempt,
+			})),
 			db
 				.prepare(
 					`UPDATE supplier_orders SET state = 'refunded',
 					 next_retry_at = NULL, updated_at = ?
-					 WHERE order_id = ? AND state <> 'refunded'`,
+					 WHERE order_id = ? AND state <> 'refunded' AND EXISTS (
+					  SELECT 1 FROM refunds completed_refund WHERE completed_refund.id = ?
+					   AND completed_refund.attempt_count = ?
+					   AND completed_refund.status = 'succeeded'
+					   AND completed_refund.completed_at = ?
+					 )`,
 				)
-				.bind(now, refund.order_id),
+				.bind(now, refund.order_id, refund.id, attempt, now),
 			db
 				.prepare(
 					`UPDATE outbox_events SET status = 'published',
@@ -781,9 +862,14 @@ async function finalizeRefund(
 					 WHERE event_type = 'supplier.requested'
 					  AND aggregate_id IN (
 					   SELECT id FROM supplier_orders WHERE order_id = ?
-					  ) AND status IN ('pending', 'processing')`,
+					  ) AND status IN ('pending', 'processing') AND EXISTS (
+					   SELECT 1 FROM refunds completed_refund WHERE completed_refund.id = ?
+					    AND completed_refund.attempt_count = ?
+					    AND completed_refund.status = 'succeeded'
+					    AND completed_refund.completed_at = ?
+					  )`,
 				)
-				.bind(now, now, refund.order_id),
+				.bind(now, now, refund.order_id, refund.id, attempt, now),
 		);
 	const results = await db.batch(statements);
 	if (Number(results[0]?.meta.changes ?? 0) !== 1)
@@ -798,14 +884,33 @@ function refundOutboxStatement(
 	now: number,
 	nextAttemptAt: number,
 	attempt = 0,
+	guard?: {
+		attempt: number;
+		status: string;
+		nextAttemptAt?: number;
+		completedAt?: number;
+	},
 ) {
+	const guardSql = guard
+		? ` AND attempt_count = ? AND status = ?
+			${guard.nextAttemptAt === undefined ? "" : "AND next_attempt_at = ?"}
+			${guard.completedAt === undefined ? "" : "AND completed_at = ?"}`
+		: "";
+	const guardBindings = guard
+		? [
+				guard.attempt,
+				guard.status,
+				...(guard.nextAttemptAt === undefined ? [] : [guard.nextAttemptAt]),
+				...(guard.completedAt === undefined ? [] : [guard.completedAt]),
+			]
+		: [];
 	return db
 		.prepare(
 			`INSERT INTO outbox_events
 			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
 			  status, attempt_count, next_attempt_at, created_at, updated_at)
 			 SELECT ?, ?, 'refund', id, ?, ?, 'pending', 0, ?, ?, ?
-			 FROM refunds WHERE id = ?
+			 FROM refunds WHERE id = ?${guardSql}
 			 ON CONFLICT(idempotency_key) DO NOTHING`,
 		)
 		.bind(
@@ -817,6 +922,48 @@ function refundOutboxStatement(
 			now,
 			now,
 			refundId,
+			...guardBindings,
+		);
+}
+
+function refundCompletionAuditStatement(
+	db: D1Database,
+	refundId: string,
+	attempt: number,
+	status: string,
+	now: number,
+	input: {
+		failureCode: string | null;
+		orderStatus: ShopOrderStatus;
+		providerRefundId: string | null;
+		actor?: { actorUserId: string; request: Request };
+	},
+) {
+	return db
+		.prepare(
+			`INSERT INTO audit_logs
+			 (id, actor_user_id, action, target_type, target_id, request_id,
+			  ip_address, after, created_at)
+			 SELECT ?, ?, ?, 'refund', id, ?, ?, ?, ? FROM refunds
+			 WHERE id = ? AND attempt_count = ? AND status = ? AND completed_at = ?`,
+		)
+		.bind(
+			crypto.randomUUID(),
+			input.actor?.actorUserId ?? null,
+			input.actor ? "refund.manual_completed" : "refund.processed",
+			input.actor?.request.headers.get("x-request-id") ?? null,
+			input.actor?.request.headers.get("cf-connecting-ip") ?? null,
+			JSON.stringify({
+				status,
+				orderStatus: input.orderStatus,
+				failureCode: input.failureCode,
+				providerRefundId: input.providerRefundId,
+			}),
+			now,
+			refundId,
+			attempt,
+			status,
+			now,
 		);
 }
 

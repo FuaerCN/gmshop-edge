@@ -6,7 +6,6 @@ import {
 	ArrowRight,
 	Boxes,
 	CalendarDays,
-	Copy,
 	Download,
 	Eye,
 	FileDown,
@@ -18,7 +17,7 @@ import {
 	WalletCards,
 	WandSparkles,
 } from "lucide-react";
-import { type ComponentProps, forwardRef, useEffect, useState } from "react";
+import { type ComponentProps, forwardRef, useState } from "react";
 import { toast } from "sonner";
 import { CopyButton, ProButton } from "#/components/pro/base/button";
 import { ModalForm, ProSchemaForm } from "#/components/pro/form";
@@ -34,12 +33,12 @@ import {
 	DialogTrigger,
 } from "#/components/ui/dialog";
 import { Input } from "#/components/ui/input";
-import { Skeleton } from "#/components/ui/skeleton";
 import { authClient } from "#/features/auth/auth-client";
 import { listPublicAuthProvidersFn } from "#/features/auth/server/provider-admin";
 import { entitlementStatusLabel } from "#/features/entitlements/labels";
 import { shopOrderStatusLabel } from "#/features/shop-orders/labels";
 import { AutomationEntitlementCard } from "#/features/storefront/components/build-entitlement";
+import { DeliveryRevealContent } from "#/features/storefront/components/delivery-reveal-content";
 import {
 	AccountLoginMethods,
 	AccountNotificationPreferences,
@@ -300,10 +299,14 @@ function ApiKeysDialog() {
 		apiKey: string;
 		apiSecret: string;
 	} | null>(null);
+	const [keyName, setKeyName] = useState("");
+	const [password, setPassword] = useState("");
 	const createKey = useMutation({
 		mutationFn: createSupplierApiKeyFn,
 		onSuccess: (key) => {
 			setCreatedKey(key);
+			setKeyName("");
+			setPassword("");
 			void api.refetch();
 		},
 		onError: () => toast.error(m.web_support_failed()),
@@ -343,7 +346,10 @@ function ApiKeysDialog() {
 								</div>
 							</div>
 							<div className="mt-4 grid gap-2">
-								<ApiCredential label="API Key" value={createdKey.apiKey} />
+								<ApiCredential
+									label={m.supplier_api_key()}
+									value={createdKey.apiKey}
+								/>
 								<ApiCredential
 									label={m.supplier_api_secret()}
 									value={createdKey.apiSecret}
@@ -366,7 +372,10 @@ function ApiKeysDialog() {
 											<KeyRound className="size-4" />
 										</span>
 										<div className="min-w-0 flex-1">
-											<p className="text-muted-foreground text-xs">API Key</p>
+											<p className="truncate font-medium text-sm">{key.name}</p>
+											<p className="text-muted-foreground text-xs">
+												{m.supplier_api_key()}
+											</p>
 											<code className="block truncate text-xs">
 												{key.key_id}
 											</code>
@@ -394,14 +403,58 @@ function ApiKeysDialog() {
 						</div>
 					</section>
 				</div>
-				<div className="flex shrink-0 justify-end">
-					<Button
-						disabled={createKey.isPending}
-						onClick={() => createKey.mutate({ data: {} })}
+				<div className="grid shrink-0 gap-3 border-t pt-4">
+					<label className="grid gap-1.5" htmlFor="supplier-api-key-name">
+						<span className="font-medium text-sm">
+							{m.supplier_api_key_name()}
+						</span>
+						<Input
+							id="supplier-api-key-name"
+							maxLength={100}
+							onChange={(event) => setKeyName(event.target.value)}
+							placeholder={m.supplier_api_key_name_placeholder()}
+							value={keyName}
+						/>
+					</label>
+					<label
+						className="grid gap-1.5"
+						htmlFor="supplier-api-current-password"
 					>
-						<KeyRound />
-						{m.supplier_create_new_api_key()}
-					</Button>
+						<span className="font-medium text-sm">
+							{m.supplier_api_current_password()}
+						</span>
+						<Input
+							autoComplete="current-password"
+							id="supplier-api-current-password"
+							maxLength={500}
+							onChange={(event) => setPassword(event.target.value)}
+							type="password"
+							value={password}
+						/>
+					</label>
+					{activeKeys.length >= 10 ? (
+						<p className="text-destructive text-sm">
+							{m.supplier_api_key_limit_reached()}
+						</p>
+					) : null}
+					<div className="flex justify-end">
+						<Button
+							disabled={
+								createKey.isPending ||
+								activeKeys.length >= 10 ||
+								!keyName.trim() ||
+								!password
+							}
+							onClick={() =>
+								createKey.mutate({
+									data: { name: keyName, password },
+								})
+							}
+						>
+							<KeyRound />
+							{m.supplier_create_new_api_key()}
+						</Button>
+					</div>
 				</div>
 			</div>
 		</ProModal>
@@ -741,7 +794,7 @@ function AccountEntitlementActions({
 								{entitlement.productName} · {entitlement.sellableItemName}
 							</DialogDescription>
 						</DialogHeader>
-						<AccountStockContent
+						<DeliveryRevealContent
 							deliveryId={stockDelivery.id}
 							orderNumber={entitlement.orderNumber}
 						/>
@@ -795,70 +848,6 @@ function AccountEntitlementActions({
 					orderNumber={entitlement.orderNumber}
 				/>
 			) : null}
-		</div>
-	);
-}
-
-function AccountStockContent({
-	deliveryId,
-	orderNumber,
-}: {
-	deliveryId: string;
-	orderNumber: string;
-}) {
-	const [content, setContent] = useState("");
-	const [failed, setFailed] = useState(false);
-	useEffect(() => {
-		void fetch(
-			`/api/shop/orders/${encodeURIComponent(orderNumber)}/deliveries/${encodeURIComponent(deliveryId)}/reveal`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({}),
-				credentials: "same-origin",
-			},
-		)
-			.then(async (response) => {
-				if (!response.ok) throw new Error("delivery_reveal_failed");
-				const body = (await response.json()) as { content?: unknown };
-				if (typeof body.content !== "string")
-					throw new Error("delivery_reveal_failed");
-				setContent(body.content);
-			})
-			.catch(() => setFailed(true));
-	}, [deliveryId, orderNumber]);
-	function recordCopy() {
-		void fetch(
-			`/api/shop/orders/${encodeURIComponent(orderNumber)}/deliveries/${encodeURIComponent(deliveryId)}/reveal`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ action: "copied" }),
-				credentials: "same-origin",
-			},
-		);
-	}
-	if (failed)
-		return (
-			<p className="text-destructive text-sm">
-				{m.store_delivery_reveal_failed()}
-			</p>
-		);
-	if (!content) return <Skeleton className="h-12 w-full rounded-xl" />;
-	return (
-		<div className="flex min-w-0 items-center gap-2 rounded-xl border bg-muted/30 p-2 pl-3">
-			<code className="min-w-0 flex-1 overflow-x-auto font-mono text-sm whitespace-pre">
-				{content}
-			</code>
-			<CopyButton
-				aria-label={m.store_copy_delivery()}
-				copy={content}
-				icon={<Copy />}
-				onClick={recordCopy}
-				size="icon-sm"
-				tooltip={m.store_copy_delivery()}
-				variant="ghost"
-			/>
 		</div>
 	);
 }

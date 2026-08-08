@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { uploadAutomationArtifact } from "#/features/builds/server/callback";
+import {
+	BodyLimitExceededError,
+	readBoundedRequestBytes,
+} from "#/lib/bounded-stream";
 import { DomainError } from "#/lib/domain-error";
 import { getEnv } from "#/server/db.server";
 
@@ -9,11 +13,6 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			POST: async ({ request, params }) => {
-				if (
-					Number(request.headers.get("content-length") ?? 0) >
-					100 * 1024 * 1024
-				)
-					return Response.json({ code: "request_too_large" }, { status: 413 });
 				try {
 					const env = getEnv();
 					const result = await uploadAutomationArtifact(
@@ -27,13 +26,18 @@ export const Route = createFileRoute(
 								request.headers.get("content-type") ??
 								"application/octet-stream",
 						},
-						await request.arrayBuffer(),
+						(await readBoundedRequestBytes(request, 100 * 1024 * 1024)).buffer,
 						request.headers.get("x-gmshop-signature") ?? "",
 					);
 					return Response.json(result, {
 						status: result.duplicate ? 200 : 201,
 					});
 				} catch (error) {
+					if (error instanceof BodyLimitExceededError)
+						return Response.json(
+							{ code: "request_too_large" },
+							{ status: 413 },
+						);
 					const status = error instanceof DomainError ? error.status : 400;
 					const code =
 						error instanceof DomainError ? error.code : "invalid_request";

@@ -18,6 +18,7 @@ import {
 	recordIdSchema,
 } from "#/features/catalog/schema";
 import { removeSellableItemsFromAllCarts } from "#/features/storefront/server/cart";
+import { csvCell } from "#/lib/csv";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret, encryptSecret } from "#/lib/secrets";
 import { getAdminRuntimeServerContext } from "#/server/context";
@@ -1190,8 +1191,4 @@ function pageResults(results: D1Result<unknown>[]) {
 		rows: (rowsResult?.results ?? []) as Array<Record<string, unknown>>,
 		total: Number(countRow?.total ?? 0),
 	};
-}
-
-function csvCell(value: string) {
-	return `"${value.replaceAll('"', '""')}"`;
 }

@@ -53,7 +53,13 @@ export function CommandMenu() {
 	);
 
 	return (
-		<CommandDialog modal open={open} onOpenChange={setOpen}>
+		<CommandDialog
+			modal
+			open={open}
+			onOpenChange={setOpen}
+			title={m.layout_commandTitle()}
+			description={m.layout_commandDescription()}
+		>
 			<CommandInput placeholder={m.layout_commandPlaceholder()} />
 			<CommandList>
 				<ScrollArea type="hover" className="h-72 pe-1">

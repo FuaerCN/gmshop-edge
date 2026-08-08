@@ -1,5 +1,6 @@
 import { normalizeRoleIds } from "#/features/access/rbac-json";
 import { DomainError } from "#/lib/domain-error";
+import { isEnabledRootUser, loadRootUserState } from "./root-protection";
 
 export async function replaceUserRolesAtomically(
 	db: D1Database,
@@ -16,6 +17,7 @@ export async function replaceUserRolesAtomically(
 			"You cannot remove all of your own roles",
 		);
 	const roleIds = normalizeRoleIds(input.roleIds);
+	let nextIncludesRoot = false;
 	if (roleIds.length) {
 		const placeholders = roleIds.map(() => "?").join(",");
 		const roles = await db
@@ -34,14 +36,45 @@ export async function replaceUserRolesAtomically(
 				400,
 				"Roles must exist, be enabled, and cannot include guest",
 			);
+		nextIncludesRoot = roles.results.some((role) => role.name === "root");
 	}
+	const targetBefore = await loadRootUserState(db, input.userId);
+	if (!targetBefore.exists)
+		throw new DomainError("user_not_found", 404, "User not found");
+	if (
+		(targetBefore.isRoot || nextIncludesRoot) &&
+		!(await isEnabledRootUser(db, input.currentUserId))
+	)
+		throw new DomainError(
+			"root_role_required",
+			403,
+			"Only an enabled root user can change the root role",
+		);
 	const now = Date.now();
 	const nextRolesJson = JSON.stringify(roleIds);
 	const result = await db
 		.prepare(`UPDATE users SET role_ids = ?,
 				updated_at = CASE WHEN updated_at >= ? THEN updated_at + 1 ELSE ? END
-				WHERE id = ? AND (
-				 enabled <> 1 OR NOT EXISTS (
+					WHERE id = ? AND (
+					 (
+					  NOT EXISTS (
+					   SELECT 1 FROM json_each(users.role_ids) current_assigned
+					   JOIN roles current_root ON current_root.id = current_assigned.value
+					   WHERE current_root.name = 'root' AND current_root.enabled = 1
+					  ) AND NOT EXISTS (
+					   SELECT 1 FROM json_each(?) next_root_assigned
+					   JOIN roles requested_root ON requested_root.id = next_root_assigned.value
+					   WHERE requested_root.name = 'root' AND requested_root.enabled = 1
+					  )
+					 ) OR EXISTS (
+					  SELECT 1 FROM users actor
+					  JOIN json_each(actor.role_ids) actor_assigned
+					  JOIN roles actor_root ON actor_root.id = actor_assigned.value
+					  WHERE actor.id = ? AND actor.enabled = 1
+					   AND actor_root.name = 'root' AND actor_root.enabled = 1
+					 )
+					) AND (
+					 enabled <> 1 OR NOT EXISTS (
 				  SELECT 1 FROM json_each(users.role_ids) assigned
 				  JOIN roles current_role ON current_role.id = assigned.value
 				  WHERE current_role.name = 'root' AND current_role.enabled = 1
@@ -59,15 +92,29 @@ export async function replaceUserRolesAtomically(
 				   )
 				 )
 				)`)
-		.bind(nextRolesJson, now, now, input.userId, nextRolesJson)
+		.bind(
+			nextRolesJson,
+			now,
+			now,
+			input.userId,
+			nextRolesJson,
+			input.currentUserId,
+			nextRolesJson,
+		)
 		.run();
 	if ((result.meta.changes ?? 0) !== 1) {
-		const existing = await db
-			.prepare("SELECT id FROM users WHERE id = ?")
-			.bind(input.userId)
-			.first<{ id: string }>();
-		if (!existing)
+		const target = await loadRootUserState(db, input.userId);
+		if (!target.exists)
 			throw new DomainError("user_not_found", 404, "User not found");
+		if (
+			(target.isRoot || nextIncludesRoot) &&
+			!(await isEnabledRootUser(db, input.currentUserId))
+		)
+			throw new DomainError(
+				"root_role_required",
+				403,
+				"Only an enabled root user can change the root role",
+			);
 		throw new DomainError(
 			"last_root_required",
 			409,

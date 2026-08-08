@@ -85,7 +85,7 @@ export function ProTableToolbar<TData>({
 					};
 				})}
 				placeholder={filter.placeholder ?? column.id}
-				searchable
+				searchable={filter.searchable ?? filter.options.length > 8}
 				value={filterValue}
 			/>,
 		];

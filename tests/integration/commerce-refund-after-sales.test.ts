@@ -182,6 +182,124 @@ describe("commerce refunds and after-sale cases", { timeout: 30_000 }, () => {
 		});
 	});
 
+	it("lets only one concurrent worker call the refund provider", async () => {
+		const refund = await requestShopRefund(
+			db,
+			{
+				orderId: ids.order,
+				amountMinor: "1000",
+				reason: "Concurrent worker regression",
+				idempotencyKey: "refund-worker-race",
+			},
+			{ actorUserId: ids.admin, request: testRequest() },
+		);
+		const fetcher = vi.fn(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 25));
+			return Response.json({
+				id: "re_concurrent_worker",
+				status: "succeeded",
+				failure_reason: null,
+			});
+		});
+		const results = await Promise.all([
+			processShopRefund(db, refund.id, fetcher),
+			processShopRefund(db, refund.id, fetcher),
+		]);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(results).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ status: "succeeded", duplicate: false }),
+				expect.objectContaining({ duplicate: true }),
+			]),
+		);
+		const state = await db
+			.prepare(
+				`SELECT r.status, o.status AS order_status,
+				 (SELECT COUNT(*) FROM outbox_events WHERE event_type = 'refund.succeeded') AS events,
+				 (SELECT COUNT(*) FROM audit_logs WHERE action = 'refund.processed') AS audits
+				 FROM refunds r JOIN shop_orders o ON o.id = r.order_id WHERE r.id = ?`,
+			)
+			.bind(refund.id)
+			.first<Record<string, unknown>>();
+		expect(state).toMatchObject({
+			status: "succeeded",
+			order_status: "refunded",
+			events: 1,
+			audits: 1,
+		});
+	});
+
+	it("prevents an expired worker from overwriting a newer refund attempt", async () => {
+		const refund = await requestShopRefund(
+			db,
+			{
+				orderId: ids.order,
+				amountMinor: "1000",
+				reason: "Expired worker regression",
+				idempotencyKey: "refund-expired-worker",
+			},
+			{ actorUserId: ids.admin, request: testRequest() },
+		);
+		let signalFirstStarted: (() => void) | undefined;
+		const firstStarted = new Promise<void>((resolve) => {
+			signalFirstStarted = resolve;
+		});
+		let releaseFirst: (() => void) | undefined;
+		const firstMayFinish = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let calls = 0;
+		const fetcher = vi.fn(async () => {
+			calls += 1;
+			if (calls === 1) {
+				signalFirstStarted?.();
+				await firstMayFinish;
+				return Response.json({
+					id: "re_expired_worker",
+					status: "succeeded",
+					failure_reason: null,
+				});
+			}
+			return Response.json({
+				id: "re_current_worker",
+				status: "succeeded",
+				failure_reason: null,
+			});
+		});
+		const expiredWorker = processShopRefund(db, refund.id, fetcher);
+		await firstStarted;
+		await db
+			.prepare("UPDATE refunds SET next_attempt_at = 0 WHERE id = ?")
+			.bind(refund.id)
+			.run();
+		await expect(
+			processShopRefund(db, refund.id, fetcher),
+		).resolves.toMatchObject({
+			status: "succeeded",
+			duplicate: false,
+		});
+		releaseFirst?.();
+		await expect(expiredWorker).resolves.toMatchObject({ duplicate: true });
+		const state = await db
+			.prepare(
+				`SELECT r.status, r.provider_refund_id, r.attempt_count,
+				 o.status AS order_status,
+				 (SELECT COUNT(*) FROM outbox_events WHERE event_type = 'refund.succeeded') AS events,
+				 (SELECT COUNT(*) FROM audit_logs WHERE action = 'refund.processed') AS audits
+				 FROM refunds r JOIN shop_orders o ON o.id = r.order_id WHERE r.id = ?`,
+			)
+			.bind(refund.id)
+			.first<Record<string, unknown>>();
+		expect(state).toMatchObject({
+			status: "succeeded",
+			provider_refund_id: "re_current_worker",
+			attempt_count: 2,
+			order_status: "refunded",
+			events: 1,
+			audits: 1,
+		});
+	});
+
 	it("refunds the provider currency with the immutable payment rate snapshot", async () => {
 		await db.batch([
 			db

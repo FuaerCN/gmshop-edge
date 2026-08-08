@@ -3,6 +3,10 @@ import {
 	processTelegramWebhook,
 	TelegramWebhookError,
 } from "#/features/telegram/server/webhook";
+import {
+	BodyLimitExceededError,
+	readBoundedRequestText,
+} from "#/lib/bounded-stream";
 import { getEnv } from "#/server/db.server";
 
 const maximumBodyBytes = 256 * 1024;
@@ -18,14 +22,8 @@ export const Route = createFileRoute("/api/telegram/webhook")({
 						{ code: "unsupported_media_type" },
 						{ status: 415 },
 					);
-				if (
-					Number(request.headers.get("content-length") ?? 0) > maximumBodyBytes
-				)
-					return Response.json({ code: "request_too_large" }, { status: 413 });
-				const body = await request.text();
-				if (new TextEncoder().encode(body).byteLength > maximumBodyBytes)
-					return Response.json({ code: "request_too_large" }, { status: 413 });
 				try {
+					const body = await readBoundedRequestText(request, maximumBodyBytes);
 					const result = await processTelegramWebhook(
 						getEnv().DB,
 						body,
@@ -33,6 +31,11 @@ export const Route = createFileRoute("/api/telegram/webhook")({
 					);
 					return Response.json(result);
 				} catch (error) {
+					if (error instanceof BodyLimitExceededError)
+						return Response.json(
+							{ code: "request_too_large" },
+							{ status: 413 },
+						);
 					if (error instanceof TelegramWebhookError)
 						return Response.json(
 							{ code: error.code },

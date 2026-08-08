@@ -1,3 +1,4 @@
+import type { RankingInfo } from "@tanstack/match-sorter-utils";
 import type {
 	ColumnDef,
 	ColumnFiltersState,
@@ -65,9 +66,11 @@ export interface ProTableProps<TData, TValue = unknown> {
 	data?: TData[];
 	request?: (
 		params: ProTableState,
+		requestKey?: unknown,
 	) =>
 		| Promise<{ data: TData[]; total?: number }>
 		| { data: TData[]; total?: number };
+	requestKey?: unknown;
 	initialState?: Partial<ProTableState>;
 	onChange?: (state: ProTableState) => void;
 	header?: ReactNode | ((context: ProTableRenderContext<TData>) => ReactNode);
@@ -110,10 +113,28 @@ export interface ColumnFilterMeta<TData> {
 	}>;
 	placeholder?: string;
 	multiple?: boolean;
+	searchable?: boolean;
 	onFilter?: (value: string, record: TData) => boolean;
 }
 
 export interface ProTablePinnedColumnOffsets {
 	left: Record<string, number>;
 	right: Record<string, number>;
+}
+
+declare module "@tanstack/react-table" {
+	interface ColumnMeta<TData, TValue> {
+		pinned?: "left" | "right";
+		align?: "left" | "center" | "right";
+		className?: string;
+		search?:
+			| boolean
+			| {
+					placeholder?: string;
+			  };
+		filter?: ColumnFilterMeta<TData>;
+	}
+	interface FilterMeta {
+		itemRank?: RankingInfo;
+	}
 }

@@ -188,6 +188,28 @@ describe("shop payment providers", () => {
 		).rejects.toMatchObject({ code: "invalid_payment_signature" });
 	});
 
+	it("rejects a chunked oversized payment callback before signature work", async () => {
+		const request = new Request("https://shop.test/webhook", {
+			method: "POST",
+			headers: { "stripe-signature": "t=1700000000,v1=invalid" },
+			body: new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new Uint8Array(40_000));
+					controller.enqueue(new Uint8Array(40_000));
+					controller.close();
+				},
+			}),
+			duplex: "half",
+		} as RequestInit & { duplex: "half" });
+		await expect(
+			stripePaymentProvider.parseWebhook(
+				request,
+				{ secretKey: "sk_test_key", webhookSecret: "whsec_test-secret" },
+				1_700_000_000_000,
+			),
+		).rejects.toMatchObject({ code: "payment_webhook_too_large", status: 413 });
+	});
+
 	it("creates Stripe refunds through the fixed idempotent provider boundary", async () => {
 		const fetcher = vi.fn(
 			async (input: RequestInfo | URL, init?: RequestInit) => {

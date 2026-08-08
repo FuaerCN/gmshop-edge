@@ -28,6 +28,7 @@ import {
 	getAdminServerContextAny,
 } from "#/server/context";
 import { prepareCustomerDataDeletion } from "./privacy";
+import { updateCustomerRecord } from "./update";
 
 export const listUsersWithCommerceFn = createServerFn({ method: "GET" })
 	.validator((input: z.input<typeof customerListSchema>) =>
@@ -141,38 +142,7 @@ export const updateCustomerFn = createServerFn({ method: "POST" })
 		const { currentUser, db, request } = await getAdminServerContext(
 			systemPermission("customers", "update"),
 		);
-		const before = await db.$client
-			.prepare(
-				`SELECT id, name, customer_note AS note,
-				 CASE WHEN enabled = 1 THEN 'active' ELSE 'disabled' END AS status
-				 FROM users WHERE id = ? LIMIT 1`,
-			)
-			.bind(data.id)
-			.first<Record<string, unknown>>();
-		if (!before)
-			throw new DomainError("customer_not_found", 404, "User not found");
-		const now = Date.now();
-		await db.$client.batch([
-			db.$client
-				.prepare(
-					"UPDATE users SET name = ?, customer_note = ?, enabled = ?, updated_at = ? WHERE id = ?",
-				)
-				.bind(
-					data.name,
-					data.note,
-					data.status === "active" ? 1 : 0,
-					now,
-					data.id,
-				),
-			createAuditStatement(db.$client, request, currentUser.id, {
-				action: "customer.updated",
-				targetType: "user",
-				targetId: data.id,
-				before,
-				after: data,
-			}),
-		]);
-		return { id: data.id };
+		return updateCustomerRecord(db.$client, request, currentUser.id, data);
 	});
 
 export const adjustCustomerWalletFn = createServerFn({ method: "POST" })

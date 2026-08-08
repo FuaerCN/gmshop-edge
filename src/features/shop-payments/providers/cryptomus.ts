@@ -15,9 +15,9 @@ import { DomainError } from "#/lib/domain-error";
 import { minorToDecimal } from "#/lib/units";
 import { manualRefundMethods } from "./epusdt";
 import { bytesToBase64 } from "./rsa";
+import { readPaymentWebhookText } from "./webhook-body";
 
 const apiBaseUrl = "https://api.cryptomus.com/v1";
-const maximumWebhookBytes = 65_536;
 const encoder = new TextEncoder();
 
 const invoiceSchema = z.object({
@@ -110,12 +110,7 @@ export const cryptomusPaymentProvider: PaymentProviderAdapter = {
 				.startsWith("application/json")
 		)
 			throw invalidCallback();
-		const contentLength = Number(request.headers.get("content-length") ?? 0);
-		if (Number.isFinite(contentLength) && contentLength > maximumWebhookBytes)
-			throw invalidCallback();
-		const body = await request.text();
-		if (encoder.encode(body).byteLength > maximumWebhookBytes)
-			throw invalidCallback();
+		const body = await readPaymentWebhookText(request);
 		const raw = parseJsonObject(body);
 		const { sign, ...unsigned } = raw;
 		const credential = cryptomusCredentialSchema.parse(rawCredential);

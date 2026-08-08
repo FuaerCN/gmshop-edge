@@ -14,6 +14,7 @@ import {
 	signGmpay,
 	verifyGmpaySignature,
 } from "./epusdt";
+import { readPaymentWebhookText } from "./webhook-body";
 
 const createResponseSchema = z.object({
 	status_code: z.literal(200),
@@ -136,7 +137,7 @@ export const gmpayPaymentProvider: PaymentProviderAdapter = {
 				405,
 				"Invalid payment callback method",
 			);
-		const body = await request.text();
+		const body = await readPaymentWebhookText(request);
 		let raw: unknown;
 		try {
 			raw = JSON.parse(body);

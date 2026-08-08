@@ -151,7 +151,7 @@ describe("Cryptomus payment provider", () => {
 		});
 		await expect(
 			parseWebhook("x".repeat(65_537), "application/json"),
-		).rejects.toMatchObject({ code: "invalid_payment_callback" });
+		).rejects.toMatchObject({ code: "payment_webhook_too_large", status: 413 });
 		await expect(parseWebhook("{}", "text/plain")).rejects.toMatchObject({
 			code: "invalid_payment_callback",
 		});

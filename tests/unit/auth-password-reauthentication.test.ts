@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { sensitiveProofSchema } from "#/features/auth/reauthentication-schema";
+import { supplierApiKeyCreateSchema } from "#/features/supplier-api/schema";
 
 const source = (path: string) =>
 	readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -14,6 +15,21 @@ describe("password-only sensitive reauthentication", () => {
 		expect(sensitiveProofSchema.safeParse({ totpCode: "123456" }).success).toBe(
 			false,
 		);
+	});
+
+	it("requires a name and current password for supplier API key creation", () => {
+		expect(
+			supplierApiKeyCreateSchema.parse({
+				name: "Production store",
+				password: "current-password",
+			}),
+		).toEqual({ name: "Production store", password: "current-password" });
+		expect(
+			supplierApiKeyCreateSchema.safeParse({ name: "Missing proof" }).success,
+		).toBe(false);
+		expect(
+			supplierApiKeyCreateSchema.safeParse({ password: "current" }).success,
+		).toBe(false);
 	});
 
 	it("does not install two-factor auth plugins or challenge routes", () => {

@@ -1,3 +1,7 @@
+import {
+	BodyLimitExceededError,
+	readBoundedResponseBytes,
+} from "#/lib/bounded-stream";
 import { DomainError } from "#/lib/domain-error";
 import { assertPublicSupplierHostname } from "../server/destination-security";
 
@@ -40,16 +44,13 @@ export async function supplierFetchJson(
 			"Supplier redirects are not allowed",
 		);
 	}
-	const declaredLength = Number(response.headers.get("content-length") ?? "0");
-	if (
-		!Number.isSafeInteger(declaredLength) ||
-		declaredLength < 0 ||
-		declaredLength > MAX_RESPONSE_BYTES
-	) {
-		throw invalidResponse();
+	let bytes: Uint8Array;
+	try {
+		bytes = await readBoundedResponseBytes(response, MAX_RESPONSE_BYTES);
+	} catch (error) {
+		if (error instanceof BodyLimitExceededError) throw invalidResponse();
+		throw error;
 	}
-	const bytes = new Uint8Array(await response.arrayBuffer());
-	if (bytes.byteLength > MAX_RESPONSE_BYTES) throw invalidResponse();
 	let body: unknown;
 	try {
 		body = JSON.parse(new TextDecoder().decode(bytes));

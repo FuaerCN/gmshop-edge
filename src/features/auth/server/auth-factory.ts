@@ -307,23 +307,34 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 								),
 							}
 						: null;
-				await db.$client
-					.prepare(
-						`INSERT INTO audit_logs
+				await db.$client.batch([
+					...(passwordCredentialChanged(ctx.path)
+						? [
+								db.$client
+									.prepare(
+										`UPDATE supplier_api_keys SET revoked_at = ?, updated_at = ?
+										 WHERE user_id = ? AND revoked_at IS NULL`,
+									)
+									.bind(Date.now(), Date.now(), userId),
+							]
+						: []),
+					db.$client
+						.prepare(
+							`INSERT INTO audit_logs
 						(id, actor_user_id, action, target_type, target_id, request_id, ip_address, after, created_at)
 						VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)`,
-					)
-					.bind(
-						crypto.randomUUID(),
-						userId,
-						action,
-						userId,
-						ctx.headers?.get("x-request-id") ?? null,
-						ctx.headers?.get("cf-connecting-ip") ?? null,
-						after ? JSON.stringify(after) : null,
-						Date.now(),
-					)
-					.run();
+						)
+						.bind(
+							crypto.randomUUID(),
+							userId,
+							action,
+							userId,
+							ctx.headers?.get("x-request-id") ?? null,
+							ctx.headers?.get("cf-connecting-ip") ?? null,
+							after ? JSON.stringify(after) : null,
+							Date.now(),
+						),
+				]);
 			}),
 		},
 		plugins: [
@@ -771,6 +782,15 @@ function securityAuditAction(path: string) {
 			"/unlink-account": "auth.account_unlinked",
 		}[path] ?? null
 	);
+}
+
+function passwordCredentialChanged(path: string) {
+	return [
+		"/change-password",
+		"/set-password",
+		"/reset-password",
+		"/email-otp/reset-password",
+	].includes(path);
 }
 
 async function auditAuthenticationFailure(

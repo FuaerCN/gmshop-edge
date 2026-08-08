@@ -28,8 +28,12 @@ describe("account entitlement operations", () => {
 		expect(source).toContain("/downloads/");
 		expect(source).toContain("<AutomationEntitlementCard");
 		expect(source).toContain('["stock", "download", "automation"]');
-		expect(source).toContain("<AccountStockContent");
-		expect(source).toContain("<CopyButton");
+		expect(source).toContain("<DeliveryRevealContent");
+		const deliveryContent = await readFile(
+			resolve("src/features/storefront/components/delivery-reveal-content.tsx"),
+			"utf8",
+		);
+		expect(deliveryContent).toContain("<CopyButton");
 	});
 
 	it("keeps entitlement identity actions above an equal-height bottom operation area", async () => {

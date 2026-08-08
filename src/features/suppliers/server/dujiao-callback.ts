@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+	BodyLimitExceededError,
+	readBoundedRequestBytes,
+} from "#/lib/bounded-stream";
 import { DomainError } from "#/lib/domain-error";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import { signDujiaoNextRequest } from "../providers/signatures";
@@ -40,8 +44,14 @@ export async function handleDujiaoSupplierCallback(
 	db: D1Database,
 	now = Date.now(),
 ) {
-	const raw = new Uint8Array(await request.arrayBuffer());
-	if (raw.byteLength > MAX_CALLBACK_BYTES) return rejected("body_too_large");
+	let raw: Uint8Array;
+	try {
+		raw = await readBoundedRequestBytes(request, MAX_CALLBACK_BYTES);
+	} catch (error) {
+		if (error instanceof BodyLimitExceededError)
+			return rejected("body_too_large", 413);
+		throw error;
+	}
 	const rawBody = new TextDecoder().decode(raw);
 	if (!(await claimSupplierCallbackBudget(db, accountId, now)))
 		return rejected("rate_limited");
@@ -172,8 +182,8 @@ export async function handleDujiaoSupplierCallback(
 	}
 }
 
-function rejected(message: string) {
-	return Response.json({ ok: false, message });
+function rejected(message: string, status = 200) {
+	return Response.json({ ok: false, message }, { status });
 }
 
 function constantTimeEqual(left: string, right: string) {

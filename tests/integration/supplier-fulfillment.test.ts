@@ -340,6 +340,84 @@ describe("supplier fulfillment", { timeout: 30_000 }, () => {
 		});
 	});
 
+	it("stores one card set under concurrent distinct fulfillment callbacks", async () => {
+		await completeFreeStoreOrder(db, "order");
+		const supplierOrder = await db
+			.prepare("SELECT id FROM supplier_orders WHERE order_id = 'order'")
+			.first<{ id: string }>();
+		await expect(
+			processSupplierOrder(db, supplierOrder?.id ?? "", {
+				fetcher: pendingSupplierFetcher,
+			}),
+		).rejects.toMatchObject({ code: "supplier_order_pending" });
+		const locked = await db
+			.prepare("SELECT provider_request_no FROM supplier_orders WHERE id = ?")
+			.bind(supplierOrder?.id)
+			.first<{ provider_request_no: string }>();
+		const timestamp = 1_800_000_000;
+		const callback = (event: string, cards: string) => {
+			const rawBody = JSON.stringify({
+				event,
+				order_id: 99,
+				order_no: "UPSTREAM-99",
+				downstream_order_no: locked?.provider_request_no,
+				status: "completed",
+				fulfillment: {
+					type: "auto",
+					status: "delivered",
+					payload: cards,
+				},
+				timestamp,
+			});
+			return new Request(
+				"https://shop.example/api/suppliers/dujiao-next/callback/account",
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"Dujiao-Next-Api-Key": "api-key",
+						"Dujiao-Next-Timestamp": String(timestamp),
+						"Dujiao-Next-Signature": signDujiaoNextRequest({
+							method: "POST",
+							path: "/api/v1/upstream/callback",
+							timestamp: String(timestamp),
+							rawBody,
+							apiSecret: "api-secret",
+						}),
+					},
+					body: rawBody,
+				},
+			);
+		};
+		const responses = await Promise.all([
+			handleDujiaoSupplierCallback(
+				callback("order.fulfilled.primary", "PRIMARY-1\nPRIMARY-2"),
+				"account",
+				db,
+				timestamp * 1000,
+			),
+			handleDujiaoSupplierCallback(
+				callback("order.fulfilled.variant", "VARIANT-1\nVARIANT-2"),
+				"account",
+				db,
+				timestamp * 1000,
+			),
+		]);
+		for (const response of responses)
+			await expect(response.json()).resolves.toMatchObject({ ok: true });
+		const state = await db
+			.prepare(
+				`SELECT state,
+				 (SELECT COUNT(*) FROM stock_entries WHERE supplier_order_id = ?) AS cards,
+				 (SELECT COUNT(*) FROM outbox_events
+				  WHERE idempotency_key = 'supplier-delivery-requested:' || delivery_record_id) AS events
+				 FROM supplier_orders WHERE id = ?`,
+			)
+			.bind(supplierOrder?.id, supplierOrder?.id)
+			.first<Record<string, unknown>>();
+		expect(state).toMatchObject({ state: "supplied", cards: 2, events: 1 });
+	});
+
 	it("verifies and deduplicates a signed Dujiao Next fulfillment callback", async () => {
 		await completeFreeStoreOrder(db, "order");
 		const supplierOrder = await db
@@ -467,6 +545,34 @@ describe("supplier fulfillment", { timeout: 30_000 }, () => {
 			state: "supplied",
 			cards: 2,
 			callbacks: 2,
+		});
+	});
+
+	it("rejects an oversized chunked supplier callback with 413", async () => {
+		const request = new Request(
+			"https://shop.example/api/suppliers/dujiao-next/callback/account",
+			{
+				method: "POST",
+				body: new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(new Uint8Array(700_000));
+						controller.enqueue(new Uint8Array(700_000));
+						controller.close();
+					},
+				}),
+				duplex: "half",
+			} as RequestInit & { duplex: "half" },
+		);
+		const response = await handleDujiaoSupplierCallback(
+			request,
+			"account",
+			db,
+			1_800_000_000_000,
+		);
+		expect(response.status).toBe(413);
+		await expect(response.json()).resolves.toEqual({
+			ok: false,
+			message: "body_too_large",
 		});
 	});
 });
