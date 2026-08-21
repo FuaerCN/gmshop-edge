@@ -1,13 +1,21 @@
 {
   "name": "gmshop-edge",
-  "version": "0.0.0-development",
+  "version": "1.0.0-alpha.1",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
   "cloudflare": {
     "label": "GMShop Edge",
-    "products": ["Workers", "D1", "KV", "R2", "Queues"],
-    "categories": ["storage"],
+    "products": [
+      "Workers",
+      "D1",
+      "KV",
+      "R2",
+      "Queues"
+    ],
+    "categories": [
+      "storage"
+    ],
     "publish": false,
     "bindings": {
       "DB": {
@@ -31,7 +39,9 @@
     "#/*": "./src/*"
   },
   "commitlint": {
-    "extends": ["@commitlint/config-conventional"],
+    "extends": [
+      "@commitlint/config-conventional"
+    ],
     "defaultIgnores": false
   },
   "scripts": {
