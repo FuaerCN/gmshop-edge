@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing semantic-release tag to republish (for example v1.0.0-alpha.1)
+        description: Existing semantic-release tag to republish (for example v1.0.0)
         required: true
         type: string
 
@@ -38,7 +38,7 @@ jobs:
       - name: Validate release tag
         shell: bash
         run: |
-          if [[ ! "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-alpha\.[1-9][0-9]*)?$ ]]; then
+          if [[ ! "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "Invalid release tag: ${RELEASE_TAG}" >&2
             exit 1
           fi
@@ -64,13 +64,9 @@ jobs:
             echo "name=${image}"
             echo 'tags<<EOF'
             echo "${image}:${version}"
-            if [[ "${version}" == *-alpha.* ]]; then
-              echo "${image}:alpha"
-            else
-              echo "${image}:${major}.${minor}"
-              echo "${image}:${major}"
-              echo "${image}:latest"
-            fi
+            echo "${image}:${major}.${minor}"
+            echo "${image}:${major}"
+            echo "${image}:latest"
             echo 'EOF'
             echo 'labels<<EOF'
             echo "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
@@ -259,42 +255,3 @@ jobs:
           subject-name: ${{ needs.prepare.outputs.image }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: false
-
-      - name: Remove superseded alpha artifacts
-        if: ${{ !contains(inputs.tag, '-') }}
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: |
-          owner="${GITHUB_REPOSITORY_OWNER}"
-          package_name="$(printf '%s' "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
-          if gh api "/orgs/${owner}" >/dev/null 2>&1; then
-            package_versions_endpoint="/orgs/${owner}/packages/container/${package_name}/versions"
-          else
-            package_versions_endpoint="/users/${owner}/packages/container/${package_name}/versions"
-          fi
-
-          image_alpha_prefix="${RELEASE_TAG#v}-alpha."
-          gh api --paginate "${package_versions_endpoint}?per_page=100" |
-          jq -r --arg prefix "${image_alpha_prefix}" '
-            .[] |
-            select(any(.metadata.container.tags[]?;
-              startswith($prefix) and (ltrimstr($prefix) | test("^[1-9][0-9]*$")))) |
-            .id
-          ' |
-          while read -r package_version_id; do
-            gh api --method DELETE "${package_versions_endpoint}/${package_version_id}"
-          done
-
-          release_alpha_prefix="${RELEASE_TAG}-alpha."
-          gh release list --repo "${GITHUB_REPOSITORY}" --limit 1000 \
-            --json isPrerelease,tagName \
-            --jq '.[] | select(.isPrerelease) | .tagName' |
-          while read -r prerelease_tag; do
-            suffix="${prerelease_tag#"${release_alpha_prefix}"}"
-            if [[ "${prerelease_tag}" == "${release_alpha_prefix}"* && "${suffix}" =~ ^[1-9][0-9]*$ ]]; then
-              gh release delete "${prerelease_tag}" --repo "${GITHUB_REPOSITORY}" \
-                --cleanup-tag --yes
-            fi
-          done

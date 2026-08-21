@@ -165,7 +165,6 @@ binding 注入。
 | 标签 | 用途 |
 | --- | --- |
 | `latest` | 推荐的稳定版本 |
-| `alpha` | 用于测试的最新预发布版本 |
 | `1.0.0` | 内容不会意外变化的固定版本 |
 
 ### Docker Compose（推荐）
@@ -192,8 +191,6 @@ volumes:
 docker compose pull
 docker compose up -d
 ```
-
-测试预发布版本时，启动前将镜像行中的 `latest` 改为 `alpha`。
 
 ### Docker 命令
 
@@ -229,11 +226,10 @@ docker compose up -d
 
 ## 版本与容器镜像
 
-`alpha` 上符合 Conventional Commits 的功能与修复提交会生成 `1.0.0-alpha.1` 等
-预发布版本，稳定版本从 `main` 生成。Alpha 镜像只写入精确版本和滚动 `alpha` 标签；
-稳定镜像还会写入 major、minor 和 `latest` 标签。每次发布都会更新包元数据、创建
-GitHub Release 与标签，再调用独立 Docker 工作流。原生 x64 与 Arm64 runner 并行构建和
-smoke test，最后发布带 SBOM 与 provenance 的组合 GHCR manifest。
+`main` 上符合 Conventional Commits 的功能与修复提交会生成稳定版本。镜像会写入精确
+版本、major、minor 和 `latest` 标签。每次发布都会更新包元数据、创建 GitHub Release
+与标签，再调用独立 Docker 工作流。原生 x64 与 Arm64 runner 并行构建和 smoke test，
+最后发布带 SBOM 与 provenance 的组合 GHCR manifest。
 
 Release 工作流支持为指定分支手动执行；当推送的分支 HEAD 有意包含 GitHub Actions
 跳过标记时，也可以通过该入口恢复发布。

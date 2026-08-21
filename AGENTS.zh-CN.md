@@ -93,5 +93,5 @@ bun run build:node
 
 - 完成还要求空 D1 迁移、权限路径、查询计划、R2/Queue、双语言/主题/移动/键盘浏览器
   和成对文档证据；禁止提交真实秘密。
-- 发布使用 semantic-release：`alpha` 是预发布通道，`main` 是稳定通道。原生 amd64
-  和 arm64 job 必须先完成 smoke test，再发布带 SBOM 与 provenance 的 GHCR manifest。
+- 发布从 `main` 使用 semantic-release。原生 amd64 和 arm64 job 必须先完成 smoke
+  test，再发布带 SBOM 与 provenance 的 GHCR manifest。

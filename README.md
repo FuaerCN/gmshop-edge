@@ -191,7 +191,6 @@ Choose the image tag that fits the deployment:
 | Tag | Use |
 | --- | --- |
 | `latest` | Recommended stable release |
-| `alpha` | Latest prerelease for testing |
 | `1.0.0` | Fixed release that will not change unexpectedly |
 
 ### Docker Compose (recommended)
@@ -218,8 +217,6 @@ volumes:
 docker compose pull
 docker compose up -d
 ```
-
-To test a prerelease, change `latest` to `alpha` before starting the service.
 
 ### Docker command
 
@@ -257,13 +254,11 @@ new or empty target and validate integrity before installing data.
 
 ## Releases and container images
 
-Conventional feature and fix commits on `alpha` produce prereleases such as
-`1.0.0-alpha.1`; stable releases are produced from `main`. Alpha images receive
-the exact version and moving `alpha` tags. Stable images also receive major,
-minor, and `latest` tags. Each release updates package metadata, creates a
-GitHub Release and tag, then calls the independent Docker workflow. Native x64
-and Arm64 runners build and smoke-test in parallel before publishing a combined
-GHCR manifest with SBOM and provenance.
+Conventional feature and fix commits on `main` produce stable releases. Images
+receive the exact version, major, minor, and `latest` tags. Each release updates
+package metadata, creates a GitHub Release and tag, then calls the independent
+Docker workflow. Native x64 and Arm64 runners build and smoke-test in parallel
+before publishing a combined GHCR manifest with SBOM and provenance.
 
 The Release workflow supports manual dispatch for an explicit branch. This is
 also the recovery path when a pushed branch head intentionally contains a

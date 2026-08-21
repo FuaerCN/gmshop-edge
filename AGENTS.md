@@ -118,6 +118,5 @@ bun run build:node
 - Completion also requires empty-D1 migration, permission-path, query-plan,
   R2/Queue, both-locale/theme/mobile/keyboard browser, and paired documentation
   evidence. Never commit real secrets.
-- Releases use semantic-release: `alpha` is the prerelease channel and `main`
-  is stable. Native amd64 and arm64 jobs must smoke-test before publishing a
-  GHCR manifest with SBOM and provenance.
+- Releases use semantic-release from `main`. Native amd64 and arm64 jobs must
+  smoke-test before publishing a GHCR manifest with SBOM and provenance.
