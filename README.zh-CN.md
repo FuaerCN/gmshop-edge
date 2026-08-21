@@ -5,18 +5,19 @@
 简体中文 · [English](README.md)
 
 [![许可证：GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-3DA639.svg?style=flat-square)](LICENSE)
-[![运行时：Cloudflare Workers](https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020.svg?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![运行时：Workers + Node](https://img.shields.io/badge/runtimes-Workers%20%2B%20Node-F38020.svg?style=flat-square)](docs/DEPLOYMENT.zh-CN.md)
 [![Bun](https://img.shields.io/badge/toolchain-Bun-000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
 [![TanStack Start](https://img.shields.io/badge/TanStack-Start-FF4154.svg?style=flat-square&logo=reactquery&logoColor=white)](https://tanstack.com/start)
-[![Cloudflare D1](https://img.shields.io/badge/data-Cloudflare%20D1-F38020.svg?style=flat-square&logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/d1/)
+[![数据：D1 + SQLite](https://img.shields.io/badge/data-D1%20%2B%20SQLite-3DA639.svg?style=flat-square)](docs/DEPLOYMENT.zh-CN.md)
 [![Better Auth](https://img.shields.io/badge/auth-Better%20Auth-000000.svg?style=flat-square)](https://www.better-auth.com/)
 [![@visulima/email](https://img.shields.io/badge/email-%40visulima%2Femail-2563EB.svg?style=flat-square)](https://visulima.com/packages/email)
 [![界面语言：2](https://img.shields.io/badge/locales-2-7C3AED.svg?style=flat-square)](project.inlang/settings.json)
 
-GMShop Edge 是面向 Cloudflare Workers 的自托管、单部署、单租户数字商品商城。一个部署
-即可提供响应式公开商城、客户中心、结算与交付，以及基于权限的管理后台。
+GMShop Edge 是可部署到 Cloudflare Workers 或 Node/Nitro Docker 容器的自托管、单部署、
+单租户数字商品商城。一个部署即可提供响应式公开商城、客户中心、结算与交付，以及基于
+权限的管理后台。
 
 > [!IMPORTANT]
 > GMShop Edge 仍在持续开发。内置适配器表示相应接入路径已经实现；生产使用仍需要部署者
@@ -104,6 +105,13 @@ KV 只保存经过校验、带版本且有界的上游目录快照与读取缓�
 编排位于 `src/server`，全新安装的 Drizzle 唯一基线为
 `drizzle/0000_gmshop.sql`。
 
+## 部署文档
+
+- [部署检查清单](docs/DEPLOYMENT.zh-CN.md)：Workers、Node/Docker、资源 binding、
+  发布通道与生产验收。
+- [Node 数据运维](docs/NODE_DATA_OPERATIONS.zh-CN.md)：备份、恢复及 Cloudflare
+  D1/R2 导入。
+
 ## 部署到 Cloudflare Workers
 
 GMShop Edge 以单个 Worker 部署，并使用 D1、KV、私有 R2、一个 commerce Queue 及其
@@ -126,12 +134,35 @@ bunx wrangler login
 bun run deploy
 ```
 
-`predeploy` Hook 会创建或复用具名 D1、R2 和 Queue 资源，通过 `DB` 应用 D1 基线并构建
-Worker；构建脚本不会将账号专属 ID 写入 `wrangler.jsonc`。请在 Cloudflare 部署环境中
-配置 `CACHE` KV namespace，以及启用邮件发送时需要的 `EMAIL` binding。
+`predeploy` Hook 会创建或复用具名 D1、KV、R2、Commerce Queue 和死信 Queue，对具名
+数据库应用 D1 基线并构建 Worker。解析出的 D1/KV ID 只注入生成的
+`dist/server/wrangler.json`，绝不写入可移植的 `wrangler.jsonc`；普通
+`bun run build` 始终是纯本地构建，不访问 Cloudflare。
 
 部署完成后访问 Worker 地址的 `/install` 初始化实例。服务商秘密均从管理后台录入，禁止
 提交到仓库。
+
+精确资源名与生产验收步骤参阅双语[部署检查清单](docs/DEPLOYMENT.zh-CN.md)。
+
+## 使用 Node 与 Docker 部署
+
+公开镜像 `ghcr.io/gmwalletapp/gmshop-edge` 支持 `linux/amd64` 和
+`linux/arm64`。使用仓库自带的 `compose.yml` 后，在 `/install` 初始化实例：
+
+```bash
+docker compose pull
+docker compose up -d
+curl --fail http://127.0.0.1:3000/healthz
+```
+
+容器监听 `3000` 端口，以非 root 用户运行，全部状态持久化到 `/var/lib/gmshop`。
+`GMSHOP_DATA_DIR` 是唯一公开的 Node 环境变量；Origin、Allowed Hosts、邮件、支付、
+供应商和自动化设置仍从 `/install` 与 `/admin` 管理。重建容器时必须保留
+`gmshop-data` volume。
+
+稳定发布使用 `latest`，预发布测试使用 `alpha`，可复现部署使用完整版本标签。本地通过
+`bun run build:node` 构建，通过 `bun run start:node` 运行。备份、恢复及 Cloudflare
+迁入参阅 [Node 数据运维](docs/NODE_DATA_OPERATIONS.zh-CN.md)。
 
 ## 保持 Fork 自动同步
 
@@ -151,6 +182,8 @@ Personal Access Token，也不会强推或覆盖 Fork 独有的提交。如果�
 
 - [Bun](https://bun.sh/) 1.3 或更高版本
 - [Wrangler](https://developers.cloudflare.com/workers/wrangler/) 支持的本地运行环境
+- 从源码执行 `build:node` 与 `start:node` 需要 [Node.js](https://nodejs.org/) 24；
+  直接运行已发布 Docker 镜像则不需要宿主机 Node.js
 
 安装依赖并启动本地开发服务器：
 
@@ -177,12 +210,12 @@ bun run dev
 
 | 模块 | 技术 |
 | --- | --- |
-| 运行时 | Cloudflare Workers |
+| 运行时 | Cloudflare Workers 或 Node/Nitro Docker |
 | 应用 | React 19、TanStack Start/Router/Query/Table/Form |
 | UI | Tailwind CSS 4、shadcn/Radix |
 | 认证 | Better Auth |
 | 授权 | 项目自有的动态 RBAC 与权限位掩码 |
-| 数据 | Cloudflare D1、Drizzle ORM |
+| 数据 | Cloudflare D1 或 SQLite、Drizzle ORM |
 | 边缘服务 | KV、R2、Queues、Cron Triggers、Send Email |
 | 国际化 | ParaglideJS |
 | 工具链 | Bun、严格 TypeScript、Zod、Vitest、Biome、Wrangler |
@@ -199,6 +232,7 @@ bun run typecheck
 bun run test
 bun run check
 bun run build
+bun run build:node
 ```
 
 本地实例完成安装后，可写入幂等的验收数据：
@@ -244,6 +278,8 @@ bun run build
 - 私有 R2 对象必须通过 D1 权限记录解析，客户端不能选择 object key。
 - 金额以最小货币单位的十进制整数字符串保存，计算不使用浮点数。
 - schema 或保留策略变更前备份 D1/R2，并实际测试恢复，不能把未经恢复验证的备份视为完成。
+- 容器升级前备份完整 Node 数据目录；使用仓库维护的数据 CLI，不要复制运行中的 SQLite
+  文件。
 
 ## 许可证
 

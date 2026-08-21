@@ -49,7 +49,7 @@ describe("server middleware boundaries", () => {
 		const entry = read("src/server-entry.ts");
 		const positions = [
 			"handleLivenessRequest(request)",
-			"validateRequestAuthority(request, env.DB)",
+			"const rejected = await validateRequestAuthority(",
 			"handleI18nRequest(",
 			"return applySecurityHeaders(",
 		].map((token) => entry.lastIndexOf(token));
@@ -58,7 +58,7 @@ describe("server middleware boundaries", () => {
 		expect(positions[0]).toBeLessThan(positions[1] ?? -1);
 		expect(positions[1]).toBeLessThan(positions[2] ?? -1);
 		expect(positions[2]).toBeLessThan(positions[3] ?? -1);
-		expect(entry).toContain(
+		expect(read("src/start.ts")).toContain(
 			"functionMiddleware: [serverFunctionErrorMiddleware]",
 		);
 	});

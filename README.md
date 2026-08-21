@@ -5,20 +5,20 @@
 [简体中文](README.zh-CN.md) · English
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-3DA639.svg?style=flat-square)](LICENSE)
-[![Runtime: Cloudflare Workers](https://img.shields.io/badge/runtime-Cloudflare%20Workers-F38020.svg?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![Runtimes: Workers + Node](https://img.shields.io/badge/runtimes-Workers%20%2B%20Node-F38020.svg?style=flat-square)](docs/DEPLOYMENT.md)
 [![Bun](https://img.shields.io/badge/toolchain-Bun-000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
 [![TanStack Start](https://img.shields.io/badge/TanStack-Start-FF4154.svg?style=flat-square&logo=reactquery&logoColor=white)](https://tanstack.com/start)
-[![Cloudflare D1](https://img.shields.io/badge/data-Cloudflare%20D1-F38020.svg?style=flat-square&logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/d1/)
+[![Data: D1 + SQLite](https://img.shields.io/badge/data-D1%20%2B%20SQLite-3DA639.svg?style=flat-square)](docs/DEPLOYMENT.md)
 [![Better Auth](https://img.shields.io/badge/auth-Better%20Auth-000000.svg?style=flat-square)](https://www.better-auth.com/)
 [![@visulima/email](https://img.shields.io/badge/email-%40visulima%2Femail-2563EB.svg?style=flat-square)](https://visulima.com/packages/email)
 [![Locales: 2](https://img.shields.io/badge/locales-2-7C3AED.svg?style=flat-square)](project.inlang/settings.json)
 
 GMShop Edge is a self-hosted, single-deployment, single-tenant digital-goods
-storefront for Cloudflare Workers. One deployment provides a responsive public
-shop, customer accounts, checkout and fulfillment, and a permission-driven
-administration console.
+storefront for Cloudflare Workers or a Node/Nitro Docker container. One
+deployment provides a responsive public shop, customer accounts, checkout and
+fulfillment, and a permission-driven administration console.
 
 > [!IMPORTANT]
 > GMShop Edge is under active development. A built-in adapter means that its
@@ -125,6 +125,13 @@ behavior live in `src/features`, cross-domain runtime plumbing lives in
 `src/server`, and the clean-install Drizzle baseline is
 `drizzle/0000_gmshop.sql`.
 
+## Deployment documentation
+
+- [Deployment checklist](docs/DEPLOYMENT.md): Workers, Node/Docker, resource
+  bindings, release channels, and production acceptance.
+- [Node data operations](docs/NODE_DATA_OPERATIONS.md): backup, restore, and
+  Cloudflare D1/R2 import.
+
 ## Deploy to Cloudflare Workers
 
 GMShop Edge deploys as one Worker with D1, KV, private R2, one commerce Queue,
@@ -149,15 +156,43 @@ bunx wrangler login
 bun run deploy
 ```
 
-The `predeploy` hook creates or reuses the named D1, R2, and Queue resources,
-applies the D1 baseline through `DB`, and builds the Worker. The build script
-does not write account-specific IDs to `wrangler.jsonc`. Configure the `CACHE`
-KV namespace and, when used, the `EMAIL` binding in the Cloudflare deployment
-environment.
+The `predeploy` hook creates or reuses the named D1, KV, R2, Commerce Queue, and
+dead-letter Queue resources, applies the D1 baseline to the named database, and
+builds the Worker. It injects resolved D1/KV IDs only into the generated
+`dist/server/wrangler.json`; account-specific IDs are never written to the
+portable `wrangler.jsonc`. Ordinary `bun run build` remains local and does not
+contact Cloudflare.
 
 After deployment, open `/install` on the Worker URL to initialize the instance.
 Provider secrets are entered through the administration console and must never
 be committed.
+
+See the paired [deployment checklist](docs/DEPLOYMENT.md) for the exact resource
+names and production acceptance steps.
+
+## Deploy with Node and Docker
+
+The public `ghcr.io/gmwalletapp/gmshop-edge` image supports `linux/amd64` and
+`linux/arm64`. Use the repository `compose.yml`, then initialize the instance at
+`/install`:
+
+```bash
+docker compose pull
+docker compose up -d
+curl --fail http://127.0.0.1:3000/healthz
+```
+
+The container listens on port `3000`, runs as a non-root user, and persists all
+state in `/var/lib/gmshop`. `GMSHOP_DATA_DIR` is the only public Node environment
+variable; Origin, Allowed Hosts, email, payment, supplier, and automation
+settings remain in `/install` and `/admin`. Preserve the `gmshop-data` volume
+when recreating the container.
+
+Use `latest` for stable releases, `alpha` for prerelease testing, or a complete
+version tag for reproducible deployments. Build locally with
+`bun run build:node` and run with `bun run start:node`. Backup, restore, and
+Cloudflare import are documented in
+[Node data operations](docs/NODE_DATA_OPERATIONS.md).
 
 ## Keep a fork synchronized
 
@@ -181,6 +216,8 @@ automatic synchronization can continue.
 - [Bun](https://bun.sh/) 1.3 or later
 - A local environment supported by
   [Wrangler](https://developers.cloudflare.com/workers/wrangler/)
+- [Node.js](https://nodejs.org/) 24 for `build:node` and `start:node` (not
+  required when running the published Docker image)
 
 Install dependencies and start the local development server:
 
@@ -213,12 +250,12 @@ After installation:
 
 | Area | Technology |
 | --- | --- |
-| Runtime | Cloudflare Workers |
+| Runtime | Cloudflare Workers or Node/Nitro Docker |
 | Application | React 19, TanStack Start/Router/Query/Table/Form |
 | UI | Tailwind CSS 4, shadcn/Radix |
 | Authentication | Better Auth |
 | Authorization | Project-owned dynamic RBAC with permission bit masks |
-| Data | Cloudflare D1, Drizzle ORM |
+| Data | Cloudflare D1 or SQLite, Drizzle ORM |
 | Edge services | KV, R2, Queues, Cron Triggers, Send Email |
 | Internationalization | ParaglideJS |
 | Tooling | Bun, strict TypeScript, Zod, Vitest, Biome, Wrangler |
@@ -235,6 +272,7 @@ bun run typecheck
 bun run test
 bun run check
 bun run build
+bun run build:node
 ```
 
 After installing a local instance, populate idempotent acceptance fixtures with:
@@ -293,6 +331,8 @@ The machine-readable application HTTP contract is available as
   with floating point.
 - Back up D1 and R2 before schema or retention changes, and test recovery rather
   than treating backups as complete when they have not been restored.
+- Back up the complete Node data directory before container upgrades; use the
+  maintained data CLI rather than copying a live SQLite file.
 
 ## License
 
