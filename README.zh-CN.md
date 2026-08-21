@@ -5,13 +5,14 @@
 简体中文 · [English](README.md)
 
 [![许可证：GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-3DA639.svg?style=flat-square)](LICENSE)
-[![运行时：Workers + Node](https://img.shields.io/badge/runtimes-Workers%20%2B%20Node-F38020.svg?style=flat-square)](docs/DEPLOYMENT.zh-CN.md)
+[![运行时：Workers + Node](https://img.shields.io/badge/runtimes-Workers%20%2B%20Node-F38020.svg?style=flat-square)](#系统架构)
 [![Bun](https://img.shields.io/badge/toolchain-Bun-000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
 [![TanStack Start](https://img.shields.io/badge/TanStack-Start-FF4154.svg?style=flat-square&logo=reactquery&logoColor=white)](https://tanstack.com/start)
-[![数据：D1 + SQLite](https://img.shields.io/badge/data-D1%20%2B%20SQLite-3DA639.svg?style=flat-square)](docs/DEPLOYMENT.zh-CN.md)
+[![数据：D1 + SQLite](https://img.shields.io/badge/data-D1%20%2B%20SQLite-3DA639.svg?style=flat-square)](#系统架构)
 [![Better Auth](https://img.shields.io/badge/auth-Better%20Auth-000000.svg?style=flat-square)](https://www.better-auth.com/)
+[![Vitest](https://img.shields.io/badge/tests-Vitest-6E9F18.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev/)
 [![@visulima/email](https://img.shields.io/badge/email-%40visulima%2Femail-2563EB.svg?style=flat-square)](https://visulima.com/packages/email)
 [![界面语言：2](https://img.shields.io/badge/locales-2-7C3AED.svg?style=flat-square)](project.inlang/settings.json)
 
@@ -65,7 +66,7 @@ flowchart LR
     Customer["客户"]
     Operator["运营人员"]
 
-    subgraph Worker["单个 GMShop Edge Worker"]
+    subgraph Runtime["单个 GMShop Edge 部署"]
         direction LR
         Storefront["公开商城 · 客户中心"]
         Admin["权限驱动的管理后台"]
@@ -82,6 +83,7 @@ flowchart LR
     end
 
     Cloudflare["Cloudflare 服务<br/>D1 · KV · R2 · Queues · Cron"]
+    Node["Node 服务<br/>SQLite · 本地对象 · 可靠队列 · 调度器"]
     Providers["业务服务商<br/>收银台 · 邮件 · 自动化"]
     Upstreams["上游供货平台<br/>异次元发卡 · 独角数卡 Next"]
 
@@ -90,27 +92,23 @@ flowchart LR
     Commerce <--> Cloudflare
     Suppliers <--> Cloudflare
     Delivery <--> Cloudflare
+    Commerce <--> Node
+    Suppliers <--> Node
+    Delivery <--> Node
     Delivery --> Providers
     Suppliers <--> Upstreams
 ```
 
-一个 Worker 承载公开、客户与管理入口。D1 是身份、RBAC、商品、金额、订单、库存、权益、
-供应商账号、商品绑定、采购订单、任务、重放保护、限流、outbox 和审计的权威数据源；
-KV 只保存经过校验、带版本且有界的上游目录快照与读取缓存；R2 保存私有媒体、下载文件、
-自动化制品和导出；Queues 与 Cron 将目录同步、供应商采购与核验、交付、重试、保留清理
-和密钥轮换移出同步请求。供应商模块按“平台 + API 来源”同步一次目录，并在同一来源的
-可用账号池中自动选择采购账号；上游返回的内容仍通过统一交付记录发放。
+一个 Worker 或 Node 容器承载公开、客户与管理入口。每个部署只有一个权威数据库：
+Workers 使用 D1，Node 使用 `$GMSHOP_DATA_DIR/gmshop.sqlite`。Workers 使用 KV、私有
+R2、Queues 与 Cron；Node 通过有界内存缓存、哈希化本地私有对象、SQLite 可靠队列和
+进程内调度器提供相同运行时接口。后台工作将目录同步、供应商采购与核验、交付、重试、
+保留清理和密钥轮换移出同步请求。供应商模块按“平台 + API 来源”同步一次目录，并在
+同一来源的可用账号池中自动选择采购账号；上游返回的内容仍通过统一交付记录发放。
 
 路由保持薄层；领域页面、schema、Server Function 和行为位于 `src/features`，跨领域运行时
 编排位于 `src/server`，全新安装的 Drizzle 唯一基线为
 `drizzle/0000_gmshop.sql`。
-
-## 部署文档
-
-- [部署检查清单](docs/DEPLOYMENT.zh-CN.md)：Workers、Node/Docker、资源 binding、
-  发布通道与生产验收。
-- [Node 数据运维](docs/NODE_DATA_OPERATIONS.zh-CN.md)：备份、恢复及 Cloudflare
-  D1/R2 导入。
 
 ## 部署到 Cloudflare Workers
 
@@ -121,8 +119,9 @@ GMShop Edge 以单个 Worker 部署，并使用 D1、KV、私有 R2、一个 com
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/GMWalletApp/gmshop-edge)
 
-引导流程会基于本仓库创建 Worker 项目。完成后请访问 `/install`，核对自动创建的资源
-binding，并在接收订单前完成生产检查清单。
+引导流程要求源仓库公开。Build command 使用 `bun run build`，Deploy command 使用
+`wrangler deploy`。远程构建会创建或复用具名资源、执行 D1 migration，并生成可部署的
+Worker 配置。完成后访问 `/install` 创建首位 root 管理员。
 
 ### 使用 Wrangler 部署
 
@@ -142,27 +141,102 @@ bun run deploy
 部署完成后访问 Worker 地址的 `/install` 初始化实例。服务商秘密均从管理后台录入，禁止
 提交到仓库。
 
-精确资源名与生产验收步骤参阅双语[部署检查清单](docs/DEPLOYMENT.zh-CN.md)。
+部署声明以下 binding：
+
+| Binding | Cloudflare 产品 | 用途 |
+| --- | --- | --- |
+| `DB` | D1 | 身份、商品、交易、授权与审计的权威数据 |
+| `CACHE` | KV | 经过校验的读取缓存与上游目录快照 |
+| `FILES` | R2 | 私有媒体、下载文件、自动化制品与导出 |
+| `COMMERCE_QUEUE` | Queues | 异步交付、供应商、通知与维护任务 |
+| `EMAIL` | Send Email | 可选的 Cloudflare 原生邮件投递 |
+
+`bun run build` 始终只执行本地 Workers 构建，不发现或修改远程资源；
+`bun run predeploy` 负责远程资源准备、migration、Workers 构建及生成配置中的 D1/KV
+binding 注入。
 
 ## 使用 Node 与 Docker 部署
 
-公开镜像 `ghcr.io/gmwalletapp/gmshop-edge` 支持 `linux/amd64` 和
-`linux/arm64`。使用仓库自带的 `compose.yml` 后，在 `/install` 初始化实例：
+公开 [GHCR 镜像](https://github.com/orgs/GMWalletApp/packages/container/package/gmshop-edge)
+支持 `linux/amd64` 和 `linux/arm64`，拉取公开镜像不需要登录 Registry。
+
+按部署用途选择镜像标签：
+
+| 标签 | 用途 |
+| --- | --- |
+| `latest` | 推荐的稳定版本 |
+| `alpha` | 用于测试的最新预发布版本 |
+| `1.0.0` | 内容不会意外变化的固定版本 |
+
+### Docker Compose（推荐）
+
+仓库已提供可直接使用的 `compose.yml`：
+
+```yaml
+services:
+  gmshop-edge:
+    image: ghcr.io/gmwalletapp/gmshop-edge:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GMSHOP_DATA_DIR: /var/lib/gmshop
+    volumes:
+      - gmshop-data:/var/lib/gmshop
+
+volumes:
+  gmshop-data:
+```
 
 ```bash
 docker compose pull
 docker compose up -d
-curl --fail http://127.0.0.1:3000/healthz
 ```
 
-容器监听 `3000` 端口，以非 root 用户运行，全部状态持久化到 `/var/lib/gmshop`。
-`GMSHOP_DATA_DIR` 是唯一公开的 Node 环境变量；Origin、Allowed Hosts、邮件、支付、
-供应商和自动化设置仍从 `/install` 与 `/admin` 管理。重建容器时必须保留
-`gmshop-data` volume。
+测试预发布版本时，启动前将镜像行中的 `latest` 改为 `alpha`。
 
-稳定发布使用 `latest`，预发布测试使用 `alpha`，可复现部署使用完整版本标签。本地通过
-`bun run build:node` 构建，通过 `bun run start:node` 运行。备份、恢复及 Cloudflare
-迁入参阅 [Node 数据运维](docs/NODE_DATA_OPERATIONS.zh-CN.md)。
+### Docker 命令
+
+不使用 Compose 时，可以直接运行同一服务：
+
+```bash
+docker volume create gmshop-data
+docker run --detach --name gmshop-edge --restart unless-stopped \
+  --publish 3000:3000 \
+  --env GMSHOP_DATA_DIR=/var/lib/gmshop \
+  --volume gmshop-data:/var/lib/gmshop \
+  ghcr.io/gmwalletapp/gmshop-edge:latest
+```
+
+访问 `http://your-host:3000/install`，确认公开 Origin 与 Allowed Hosts，再创建首位 root
+用户。应用、邮件、支付、供应商和自动化设置仍在 `/install` 与 `/admin` 管理，不需要新增
+公开容器环境变量。
+
+容器以非 root 用户运行并监听 `3000` 端口。`gmshop-data` volume 保存
+`gmshop.sqlite`、私有对象、可靠 Queue 状态及维护锁，更新或重建容器时必须保留。使用
+`curl --fail http://127.0.0.1:3000/healthz` 检查健康状态，使用
+`docker compose logs --follow gmshop-edge` 查看日志，使用以下命令更新：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+源码部署需要 Node.js 24，并使用 `bun run build:node` 构建、
+`bun run start:node` 运行。仓库维护的 `bun run data -- …` CLI 提供 `backup`、
+`restore` 和 `import-cloudflare`；恢复和导入只接受全新或空目标，并在安装数据前完成
+完整性校验。
+
+## 版本与容器镜像
+
+`alpha` 上符合 Conventional Commits 的功能与修复提交会生成 `1.0.0-alpha.1` 等
+预发布版本，稳定版本从 `main` 生成。Alpha 镜像只写入精确版本和滚动 `alpha` 标签；
+稳定镜像还会写入 major、minor 和 `latest` 标签。每次发布都会更新包元数据、创建
+GitHub Release 与标签，再调用独立 Docker 工作流。原生 x64 与 Arm64 runner 并行构建和
+smoke test，最后发布带 SBOM 与 provenance 的组合 GHCR manifest。
+
+Release 工作流支持为指定分支手动执行；当推送的分支 HEAD 有意包含 GitHub Actions
+跳过标记时，也可以通过该入口恢复发布。
 
 ## 保持 Fork 自动同步
 
@@ -216,7 +290,8 @@ bun run dev
 | 认证 | Better Auth |
 | 授权 | 项目自有的动态 RBAC 与权限位掩码 |
 | 数据 | Cloudflare D1 或 SQLite、Drizzle ORM |
-| 边缘服务 | KV、R2、Queues、Cron Triggers、Send Email |
+| 运行时服务 | KV/R2/Queues/Cron 或本地缓存/对象/可靠队列/调度器 |
+| Telegram | grammY、Telegram Bot API、Mini Apps |
 | 国际化 | ParaglideJS |
 | 工具链 | Bun、严格 TypeScript、Zod、Vitest、Biome、Wrangler |
 
@@ -234,6 +309,9 @@ bun run check
 bun run build
 bun run build:node
 ```
+
+每个 clone 执行一次 `bun run hooks:install`，即可启用本地 Lefthook Conventional
+Commit 检查；commitlint 策略声明在 `package.json` 中。
 
 本地实例完成安装后，可写入幂等的验收数据：
 
@@ -261,6 +339,7 @@ bun run typecheck
 bun run test
 bun run check
 bun run build
+bun run build:node
 ```
 
 确定性自动化测试用于证明应用行为。真实支付、邮件、Telegram 和自动化 Provider smoke
@@ -268,7 +347,8 @@ bun run build
 
 ## API 合约
 
-应用的机器可读 HTTP 合约见 [OpenAPI YAML](public/openapi.yaml)。
+运行实例在 `/openapi` 提供交互式 API 文档，机器可读源文件为
+[OpenAPI YAML](public/openapi.yaml)。
 
 ## 安全
 

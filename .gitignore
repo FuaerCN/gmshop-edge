@@ -10,7 +10,3 @@ dist-ssr
 .vinxi
 __unconfig*
 /docs/*
-!/docs/DEPLOYMENT.md
-!/docs/DEPLOYMENT.zh-CN.md
-!/docs/NODE_DATA_OPERATIONS.md
-!/docs/NODE_DATA_OPERATIONS.zh-CN.md
