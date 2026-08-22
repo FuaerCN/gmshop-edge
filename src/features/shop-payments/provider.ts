@@ -131,7 +131,7 @@ export const stripeCredentialSchema = z.object({
 });
 
 export const cryptomusCredentialSchema = z.object({
-	merchantId: z.string().uuid(),
+	merchantId: z.uuid(),
 	paymentApiKey: z.string().trim().min(8).max(512),
 });
 

@@ -12,7 +12,12 @@ import {
 	QrCode,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import {
+	type ReactNode,
+	type SyntheticEvent,
+	useEffect,
+	useState,
+} from "react";
 import { toast } from "sonner";
 import { ModalForm } from "#/components/pro/form";
 import { statusLabel } from "#/components/status-badge";
@@ -613,7 +618,7 @@ function GuestOrderAccess({
 }) {
 	const [email, setEmail] = useState(defaultEmail);
 	const access = storeOrderLookupSchema.safeParse({ orderNumber, email });
-	function submit(event: FormEvent) {
+	function submit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
 		event.preventDefault();
 		if (access.success) onAccess(access.data.email);
 	}

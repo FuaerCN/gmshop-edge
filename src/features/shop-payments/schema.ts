@@ -9,7 +9,7 @@ import {
 	wechatCredentialSchema,
 } from "#/features/shop-payments/provider";
 
-const idSchema = z.string().uuid();
+const idSchema = z.uuid();
 
 export const paymentChannelListSchema = z.object({
 	pageIndex: z.number().int().min(0).default(0),

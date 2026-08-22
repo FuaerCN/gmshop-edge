@@ -279,7 +279,6 @@ async function readPaymentChannels(source: string) {
 	].join("\n");
 	const transpiled = ts.transpileModule(executableSource, {
 		compilerOptions: {
-			module: ts.ModuleKind.None,
 			target: ts.ScriptTarget.ES2022,
 		},
 	}).outputText;
